@@ -1,0 +1,233 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: AgentRun — Multi-channel AI agent runtime on AWS Lambda
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Parameters
+# ─────────────────────────────────────────────────────────────────────────────
+
+Parameters:
+  Stage:
+    Type: String
+    Default: prd
+    AllowedValues: [dev, stg, prd]
+  SlackSecretArn:
+    Type: String
+    Description: Secrets Manager ARN for the Slack bot token
+  GitHubSecretArn:
+    Type: String
+    Description: Secrets Manager ARN for the GitHub token
+  JiraSecretArn:
+    Type: String
+    Description: Secrets Manager ARN for the Jira API token
+  ManifestsBucket:
+    Type: String
+    Description: S3 bucket name for pack manifests
+  Packs:
+    Type: String
+    Default: default
+    Description: Comma-separated list of pack names to load
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Globals
+# ─────────────────────────────────────────────────────────────────────────────
+
+Globals:
+  Function:
+    Runtime: nodejs18.x
+    MemorySize: 512
+    Timeout: 60
+    Architectures:
+      - arm64
+    Environment:
+      Variables:
+        NODE_OPTIONS: "--enable-source-maps"
+        HOME: /tmp
+        AGENTRUN_PACKS: !Ref Packs
+        AGENTRUN_SLACK_SECRET_ARN: !Ref SlackSecretArn
+        AGENTRUN_GITHUB_SECRET_ARN: !Ref GitHubSecretArn
+        AGENTRUN_JIRA_SECRET_ARN: !Ref JiraSecretArn
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Resources
+# ─────────────────────────────────────────────────────────────────────────────
+
+Resources:
+
+  # ── DynamoDB Tables ──
+
+  SessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub agentrun-sessions-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sessionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sessionId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  DedupTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub agentrun-dedup-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: eventId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: eventId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  UsageTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub agentrun-usage-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+
+  # ── SQS Queues ──
+
+  ProcessDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub agentrun-process-dlq-${Stage}
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  ProcessQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub agentrun-process-${Stage}
+      VisibilityTimeout: 360  # 6 minutes (Lambda timeout + buffer)
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ProcessDLQ.Arn
+        maxReceiveCount: 3
+
+  # ── Lambda Functions ──
+
+  EventsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub agentrun-events-${Stage}
+      Handler: index.handler
+      CodeUri: dist/events/
+      Timeout: 10
+      MemorySize: 256
+      Environment:
+        Variables:
+          AGENTRUN_DEDUP_TABLE: !Ref DedupTable
+          AGENTRUN_PROCESS_QUEUE_URL: !Ref ProcessQueue
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DedupTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt ProcessQueue.QueueName
+        - Statement:
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref SlackSecretArn
+      Events:
+        SlackEvents:
+          Type: Api
+          Properties:
+            Path: /events
+            Method: POST
+
+  ProcessFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub agentrun-process-${Stage}
+      Handler: index.handler
+      CodeUri: dist/process/
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          AGENTRUN_SESSION_TABLE: !Ref SessionsTable
+          AGENTRUN_USAGE_TABLE: !Ref UsageTable
+          AGENTRUN_MANIFESTS_BUCKET: !Ref ManifestsBucket
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SessionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsageTable
+        - S3ReadPolicy:
+            BucketName: !Ref ManifestsBucket
+        - Statement:
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource:
+                - !Ref SlackSecretArn
+                - !Ref GitHubSecretArn
+                - !Ref JiraSecretArn
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: "*"
+      Events:
+        SQS:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ProcessQueue.Arn
+            BatchSize: 1
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
+
+  McpServerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub agentrun-mcp-${Stage}
+      Handler: index.handler
+      CodeUri: dist/mcp-server/
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          AGENTRUN_MANIFESTS_BUCKET: !Ref ManifestsBucket
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref ManifestsBucket
+        - Statement:
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource:
+                - !Ref GitHubSecretArn
+                - !Ref JiraSecretArn
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: "*"
+      Events:
+        McpEndpoint:
+          Type: Api
+          Properties:
+            Path: /mcp
+            Method: POST
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Outputs
+# ─────────────────────────────────────────────────────────────────────────────
+
+Outputs:
+  EventsApiUrl:
+    Description: Slack Events API webhook URL
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/events"
+  McpApiUrl:
+    Description: MCP JSON-RPC endpoint URL (for Claude Code CLI)
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/mcp"
+  ProcessQueueUrl:
+    Description: SQS queue URL for query processing
+    Value: !Ref ProcessQueue
+  ProcessDLQUrl:
+    Description: Dead letter queue URL
+    Value: !Ref ProcessDLQ

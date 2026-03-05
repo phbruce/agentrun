@@ -1,0 +1,64 @@
+{
+  "name": "@agentrun-oss/tools-aws",
+  "version": "0.1.0",
+  "description": "AWS infrastructure tools: EKS, RDS, Lambda, CloudWatch, SQS monitoring + declarative tool engine",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./declarative": {
+      "types": "./dist/declarative/index.d.ts",
+      "import": "./dist/declarative/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "peerDependencies": {
+    "@agentrun-oss/core": "workspace:*"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "@aws-sdk/client-cloudwatch": "^3.700.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.700.0",
+    "@aws-sdk/client-cost-explorer": "^3.700.0",
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/client-eks": "^3.700.0",
+    "@aws-sdk/client-lambda": "^3.700.0",
+    "@aws-sdk/client-rds": "^3.700.0",
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/client-secrets-manager": "^3.700.0",
+    "@aws-sdk/client-sqs": "^3.700.0",
+    "@aws-sdk/client-ssm": "^3.700.0",
+    "@aws-sdk/client-sts": "^3.700.0",
+    "@metrichor/jmespath": "^0.3.0",
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "^3.24.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phbruce/agentrun.git",
+    "directory": "packages/tools-aws"
+  },
+  "homepage": "https://github.com/phbruce/agentrun"
+}

@@ -1,0 +1,33 @@
+{
+  "name": "agentrun-example-docker",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@agentrun-oss/core": "^0.1.0",
+    "@agentrun-oss/aws": "^0.1.0",
+    "@agentrun-oss/channel-slack": "^0.1.0",
+    "@agentrun-oss/tools-aws": "^0.1.0",
+    "@agentrun-oss/tools-github": "^0.1.0",
+    "@agentrun-oss/tools-jira": "^0.1.0",
+    "fastify": "^5.2.0",
+    "dotenv": "^16.4.0",
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "^3.24.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
