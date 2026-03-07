@@ -1,5 +1,5 @@
 {
-  "name": "@agentrun-oss/channel-slack",
+  "name": "@agentrun-ai/channel-slack",
   "version": "0.1.0",
   "description": "Slack channel adapter: events handler, Block Kit formatting, identity resolution",
   "license": "AGPL-3.0-only",
@@ -18,7 +18,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentrun-oss/core": "workspace:*"
+    "@agentrun-ai/core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

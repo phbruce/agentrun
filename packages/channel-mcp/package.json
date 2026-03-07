@@ -1,5 +1,5 @@
 {
-  "name": "@agentrun-oss/channel-mcp",
+  "name": "@agentrun-ai/channel-mcp",
   "version": "0.1.0",
   "description": "MCP (Model Context Protocol) server channel: JSON-RPC handler, tool serving",
   "license": "AGPL-3.0-only",
@@ -18,7 +18,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentrun-oss/core": "workspace:*"
+    "@agentrun-ai/core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

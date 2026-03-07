@@ -7,7 +7,7 @@ import {
     validateHttpUrl,
     validateLambdaName,
 } from "./allowlists.js";
-import type { ResolvedSecrets } from "@agentrun-oss/core";
+import type { ResolvedSecrets } from "@agentrun-ai/core";
 
 // ---------------------------------------------------------------------------
 // Declarative spec shapes (parsed from YAML)

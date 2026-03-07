@@ -2,7 +2,7 @@
 
 import fs from "fs";
 import path from "path";
-import { MarkdownIngester } from "@agentrun-oss/core";
+import { MarkdownIngester } from "@agentrun-ai/core";
 
 // Lazy-load AWS SDK
 async function loadBedrockSdk() {

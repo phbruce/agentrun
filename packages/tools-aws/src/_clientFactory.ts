@@ -5,9 +5,9 @@ import { EKSClient } from "@aws-sdk/client-eks";
 import { RDSClient } from "@aws-sdk/client-rds";
 import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import { SQSClient } from "@aws-sdk/client-sqs";
-import { logger } from "@agentrun-oss/core";
+import { logger } from "@agentrun-ai/core";
 import { REGION } from "./_clients.js";
-import type { ResolvedIdentity } from "@agentrun-oss/core";
+import type { ResolvedIdentity } from "@agentrun-ai/core";
 
 export interface AwsClients {
     lambdaClient: LambdaClient;

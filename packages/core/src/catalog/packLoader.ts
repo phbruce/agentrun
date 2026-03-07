@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import { logger } from "../logger.js";
 import { loadManifests } from "./loader.js";
-import type { ManifestCatalog, ToolDef, WorkflowDef, UseCaseDef, SkillDef, KnowledgeBaseDef } from "./types.js";
+import type { ManifestCatalog, ToolDef, WorkflowDef, UseCaseDef, SkillDef, KnowledgeBaseDef, EvalDef } from "./types.js";
 import {
     PackManifestSchema,
     RemoteToolSchema,
@@ -12,6 +12,7 @@ import {
     RemoteUseCaseSchema,
     RemoteSkillSchema,
     RemoteKnowledgeBaseSchema,
+    EvalManifestSchema,
 } from "./packTypes.js";
 import type { PackDef } from "./packTypes.js";
 import { ensurePlatform } from "../platform/bootstrap.js";
@@ -134,6 +135,7 @@ function parsePackContents(packName: string, fileContents: Map<string, string>):
     const useCases = new Map<string, UseCaseDef>();
     const skills = new Map<string, SkillDef>();
     const knowledgeBases = new Map<string, KnowledgeBaseDef>();
+    const evals = new Map<string, EvalDef>();
 
     for (const [filePath, content] of fileContents) {
         if (filePath === "pack.yaml" || filePath === "pack.yml") continue;
@@ -200,13 +202,22 @@ function parsePackContents(packName: string, fileContents: Map<string, string>):
                     embedding: parsed.spec.embedding,
                     tags: parsed.spec.tags,
                 });
+            } else if (dir === "evals" || doc.kind === "Eval") {
+                const parsed = EvalManifestSchema.parse(doc);
+                evals.set(parsed.metadata.name, {
+                    name: parsed.metadata.name,
+                    target: parsed.spec.target,
+                    triggerCases: parsed.spec.triggerCases,
+                    executionCases: parsed.spec.executionCases,
+                    config: parsed.spec.config,
+                });
             }
         } catch (err: any) {
             logger.warn({ packName, file: filePath, error: err.message }, "Failed to parse manifest in pack");
         }
     }
 
-    return { pack, catalog: { tools, workflows, useCases, skills, knowledgeBases } };
+    return { pack, catalog: { tools, workflows, useCases, skills, knowledgeBases, evals } };
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +298,7 @@ function mergeCatalogs(base: ManifestCatalog, extension: ManifestCatalog): Manif
         useCases: new Map(base.useCases),
         skills: new Map(base.skills),
         knowledgeBases: new Map(base.knowledgeBases),
+        evals: new Map(base.evals),
     };
 
     for (const [name, tool] of extension.tools) {
@@ -303,6 +315,9 @@ function mergeCatalogs(base: ManifestCatalog, extension: ManifestCatalog): Manif
     }
     for (const [name, kb] of extension.knowledgeBases) {
         merged.knowledgeBases.set(name, kb);
+    }
+    for (const [name, ev] of extension.evals) {
+        merged.evals.set(name, ev);
     }
 
     return merged;

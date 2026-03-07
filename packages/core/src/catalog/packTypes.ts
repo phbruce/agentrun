@@ -186,3 +186,41 @@ export const UserSkillSchema = z.object({
         prompt: z.string().min(1),
     }).passthrough(),
 });
+
+// ---------------------------------------------------------------------------
+// Eval manifest schema
+// ---------------------------------------------------------------------------
+
+const TriggerEvalCaseSchema = z.object({
+    query: z.string().min(1),
+    shouldTrigger: z.boolean(),
+});
+
+const ExecutionExpectationSchema = z.object({
+    type: z.enum(["contains", "not_contains", "tool_called", "tool_not_called", "matches_regex", "llm_judge"]),
+    value: z.string().min(1),
+});
+
+const ExecutionEvalCaseSchema = z.object({
+    id: z.string().min(1),
+    prompt: z.string().min(1),
+    expectations: z.array(ExecutionExpectationSchema).min(1),
+});
+
+export const EvalManifestSchema = z.object({
+    apiVersion: z.literal("agentrun/v1"),
+    kind: z.literal("Eval"),
+    metadata: z.object({ name: z.string().min(1) }),
+    spec: z.object({
+        target: z.object({
+            kind: z.enum(["Skill", "UseCase"]),
+            name: z.string().min(1),
+        }),
+        triggerCases: z.array(TriggerEvalCaseSchema).default([]),
+        executionCases: z.array(ExecutionEvalCaseSchema).default([]),
+        config: z.object({
+            passThreshold: z.number().min(0).max(1).default(0.8),
+            maxBudgetPerCaseUsd: z.number().positive().default(0.10),
+        }).default({}),
+    }),
+});

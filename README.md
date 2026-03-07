@@ -26,39 +26,39 @@ Channel Input → Identity Resolution → RBAC Gating → Routing
 
 | Package | Description |
 |---------|-------------|
-| [`@agentrun-oss/core`](packages/core) | Orchestrator, agent runner, catalog, RBAC, platform registry, RAG |
-| [`@agentrun-oss/aws`](packages/aws) | Bedrock LLM/embeddings, DynamoDB, S3, SQS, STS, Secrets Manager |
-| [`@agentrun-oss/channel-slack`](packages/channel-slack) | Slack adapter, Block Kit formatting, identity resolution |
-| [`@agentrun-oss/channel-mcp`](packages/channel-mcp) | MCP JSON-RPC server for Claude Code and other MCP clients |
-| [`@agentrun-oss/tools-aws`](packages/tools-aws) | AWS infrastructure tools (EKS, RDS, Lambda, CloudWatch, SQS) |
-| [`@agentrun-oss/tools-github`](packages/tools-github) | GitHub tools (PRs, commits, reviews) |
-| [`@agentrun-oss/tools-jira`](packages/tools-jira) | Jira tools (issues, comments, transitions) |
-| [`@agentrun-oss/cli`](packages/cli) | CLI: validate manifests, sync packs, ingest docs for RAG |
+| [`@agentrun-ai/core`](packages/core) | Orchestrator, agent runner, catalog, RBAC, platform registry, RAG |
+| [`@agentrun-ai/aws`](packages/aws) | Bedrock LLM/embeddings, DynamoDB, S3, SQS, STS, Secrets Manager |
+| [`@agentrun-ai/channel-slack`](packages/channel-slack) | Slack adapter, Block Kit formatting, identity resolution |
+| [`@agentrun-ai/channel-mcp`](packages/channel-mcp) | MCP JSON-RPC server for Claude Code and other MCP clients |
+| [`@agentrun-ai/tools-aws`](packages/tools-aws) | AWS infrastructure tools (EKS, RDS, Lambda, CloudWatch, SQS) |
+| [`@agentrun-ai/tools-github`](packages/tools-github) | GitHub tools (PRs, commits, reviews) |
+| [`@agentrun-ai/tools-jira`](packages/tools-jira) | Jira tools (issues, comments, transitions) |
+| [`@agentrun-ai/cli`](packages/cli) | CLI: validate manifests, sync packs, ingest docs for RAG |
 
 ### Dependency graph
 
 ```
-@agentrun-oss/core              (zero external deps — pure TypeScript)
+@agentrun-ai/core              (zero external deps — pure TypeScript)
     ↑
-@agentrun-oss/aws               @aws-sdk/*, @agentrun-oss/core
-@agentrun-oss/channel-slack     @slack/web-api, @agentrun-oss/core
-@agentrun-oss/channel-mcp       @agentrun-oss/core
-@agentrun-oss/tools-aws         @aws-sdk/*, @agentrun-oss/core
-@agentrun-oss/tools-github      @octokit/rest, @agentrun-oss/core
-@agentrun-oss/tools-jira        @agentrun-oss/core
-@agentrun-oss/cli               @agentrun-oss/core, commander
+@agentrun-ai/aws               @aws-sdk/*, @agentrun-ai/core
+@agentrun-ai/channel-slack     @slack/web-api, @agentrun-ai/core
+@agentrun-ai/channel-mcp       @agentrun-ai/core
+@agentrun-ai/tools-aws         @aws-sdk/*, @agentrun-ai/core
+@agentrun-ai/tools-github      @octokit/rest, @agentrun-ai/core
+@agentrun-ai/tools-jira        @agentrun-ai/core
+@agentrun-ai/cli               @agentrun-ai/core, commander
 ```
 
 ## Quick Start
 
 ```bash
-npm install @agentrun-oss/core @agentrun-oss/aws @agentrun-oss/channel-slack
+npm install @agentrun-ai/core @agentrun-ai/aws @agentrun-ai/channel-slack
 ```
 
 ```typescript
-import { bootstrapPlatform, processRequest } from "@agentrun-oss/core";
-import { registerAwsProviders } from "@agentrun-oss/aws";
-import { SlackChannelAdapter } from "@agentrun-oss/channel-slack";
+import { bootstrapPlatform, processRequest } from "@agentrun-ai/core";
+import { registerAwsProviders } from "@agentrun-ai/aws";
+import { SlackChannelAdapter } from "@agentrun-ai/channel-slack";
 
 // Register AWS providers (Bedrock, DynamoDB, S3, etc.)
 registerAwsProviders();

@@ -25,14 +25,14 @@ pnpm run typecheck # type-checks all packages
 ```
 agentrun/
 ├── packages/
-│   ├── core/           # @agentrun-oss/core — orchestrator, RBAC, catalog, RAG
-│   ├── aws/            # @agentrun-oss/aws — Bedrock, DynamoDB, S3, SQS providers
-│   ├── channel-slack/  # @agentrun-oss/channel-slack — Slack adapter
-│   ├── channel-mcp/    # @agentrun-oss/channel-mcp — MCP JSON-RPC server
-│   ├── tools-aws/      # @agentrun-oss/tools-aws — AWS infrastructure tools
-│   ├── tools-github/   # @agentrun-oss/tools-github — GitHub tools
-│   ├── tools-jira/     # @agentrun-oss/tools-jira — Jira tools
-│   └── cli/            # @agentrun-oss/cli — CLI (validate, sync, ingest)
+│   ├── core/           # @agentrun-ai/core — orchestrator, RBAC, catalog, RAG
+│   ├── aws/            # @agentrun-ai/aws — Bedrock, DynamoDB, S3, SQS providers
+│   ├── channel-slack/  # @agentrun-ai/channel-slack — Slack adapter
+│   ├── channel-mcp/    # @agentrun-ai/channel-mcp — MCP JSON-RPC server
+│   ├── tools-aws/      # @agentrun-ai/tools-aws — AWS infrastructure tools
+│   ├── tools-github/   # @agentrun-ai/tools-github — GitHub tools
+│   ├── tools-jira/     # @agentrun-ai/tools-jira — Jira tools
+│   └── cli/            # @agentrun-ai/cli — CLI (validate, sync, ingest)
 ├── examples/           # Deployment examples (Lambda, GCP, Docker, standalone)
 └── docs/               # Documentation
 ```
@@ -41,13 +41,13 @@ agentrun/
 
 ```bash
 # Type-check a single package
-pnpm --filter @agentrun-oss/core typecheck
+pnpm --filter @agentrun-ai/core typecheck
 
 # Build a single package
-pnpm --filter @agentrun-oss/core build
+pnpm --filter @agentrun-ai/core build
 
 # Build a package and all its dependencies
-pnpm --filter @agentrun-oss/channel-slack... build
+pnpm --filter @agentrun-ai/channel-slack... build
 ```
 
 ## Commit Conventions
@@ -82,7 +82,7 @@ type(scope): subject
 
 ### Scopes
 
-Use the package name without the `@agentrun-oss/` prefix:
+Use the package name without the `@agentrun-ai/` prefix:
 
 `core`, `aws`, `channel-slack`, `channel-mcp`, `tools-aws`, `tools-github`, `tools-jira`, `cli`, `deps`, `release`
 
@@ -128,7 +128,7 @@ See existing tools in `packages/tools-aws/src/` for reference.
 ## Adding a New Channel
 
 1. Create a new `channel-*` package under `packages/`
-2. Implement the `ChannelAdapter` interface from `@agentrun-oss/core`
+2. Implement the `ChannelAdapter` interface from `@agentrun-ai/core`
 3. Add the package to `pnpm-workspace.yaml`
 4. Update `commitlint.config.mjs` to include the new scope
 

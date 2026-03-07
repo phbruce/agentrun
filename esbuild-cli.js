@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// esbuild-cli.js — Build @agentrun-oss/cli as a single self-contained ESM file
+// esbuild-cli.js — Build @agentrun-ai/cli as a single self-contained ESM file
 import * as esbuild from "esbuild";
 
 await esbuild.build({

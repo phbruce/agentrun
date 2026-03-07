@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
-import { logger } from "@agentrun-oss/core";
-import type { LlmProvider, LlmResponse, ToolResultInput } from "@agentrun-oss/core";
+import { logger } from "@agentrun-ai/core";
+import type { LlmProvider, LlmResponse, ToolResultInput } from "@agentrun-ai/core";
 
 export class BedrockLlmProvider implements LlmProvider {
     private client: BedrockRuntimeClient;

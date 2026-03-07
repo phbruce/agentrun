@@ -82,10 +82,35 @@ export interface KnowledgeBaseDef {
     tags: string[];
 }
 
+export interface TriggerEvalCase {
+    query: string;
+    shouldTrigger: boolean;
+}
+
+export interface ExecutionExpectation {
+    type: "contains" | "not_contains" | "tool_called" | "tool_not_called" | "matches_regex" | "llm_judge";
+    value: string;
+}
+
+export interface ExecutionEvalCase {
+    id: string;
+    prompt: string;
+    expectations: ExecutionExpectation[];
+}
+
+export interface EvalDef {
+    name: string;
+    target: { kind: "Skill" | "UseCase"; name: string };
+    triggerCases: TriggerEvalCase[];
+    executionCases: ExecutionEvalCase[];
+    config: { passThreshold: number; maxBudgetPerCaseUsd: number };
+}
+
 export interface ManifestCatalog {
     tools: Map<string, ToolDef>;
     workflows: Map<string, WorkflowDef>;
     useCases: Map<string, UseCaseDef>;
     skills: Map<string, SkillDef>;
     knowledgeBases: Map<string, KnowledgeBaseDef>;
+    evals: Map<string, EvalDef>;
 }

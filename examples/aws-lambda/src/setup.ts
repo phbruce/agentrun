@@ -4,11 +4,11 @@
 // This file is imported (side-effect) by each handler to ensure registration runs once
 // during Lambda cold start, before bootstrapPlatform() is called.
 
-import { setProviderRegistrar, registerToolFactory } from "@agentrun-oss/core";
-import { registerAwsProviders } from "@agentrun-oss/aws";
-import { createAwsTools } from "@agentrun-oss/tools-aws";
-import { createGithubTools } from "@agentrun-oss/tools-github";
-import { createJiraTools } from "@agentrun-oss/tools-jira";
+import { setProviderRegistrar, registerToolFactory } from "@agentrun-ai/core";
+import { registerAwsProviders } from "@agentrun-ai/aws";
+import { createAwsTools } from "@agentrun-ai/tools-aws";
+import { createGithubTools } from "@agentrun-ai/tools-github";
+import { createJiraTools } from "@agentrun-ai/tools-jira";
 
 // 1. Tell the platform how to register infrastructure providers (Bedrock, DynamoDB,
 //    S3, SQS, STS, Secrets Manager) from the platform config YAML.

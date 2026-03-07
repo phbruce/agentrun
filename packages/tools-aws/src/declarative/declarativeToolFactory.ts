@@ -2,9 +2,9 @@
 
 import { z, ZodTypeAny } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { logger } from "@agentrun-oss/core";
-import type { ToolHandler, ResolvedSecrets } from "@agentrun-oss/core";
-import type { ToolDef, WorkflowDef, InputSchemaDef } from "@agentrun-oss/core";
+import { logger } from "@agentrun-ai/core";
+import type { ToolHandler, ResolvedSecrets } from "@agentrun-ai/core";
+import type { ToolDef, WorkflowDef, InputSchemaDef } from "@agentrun-ai/core";
 import { executeWorkflow } from "./workflowEngine.js";
 
 // ---------------------------------------------------------------------------

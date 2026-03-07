@@ -9,9 +9,9 @@ import {
     bootstrapPlatform,
     loadCatalogForPacks,
     setCatalog,
-} from "@agentrun-oss/core";
-import type { ChannelContext } from "@agentrun-oss/core";
-import { SlackChannelAdapter } from "@agentrun-oss/channel-slack";
+} from "@agentrun-ai/core";
+import type { ChannelContext } from "@agentrun-ai/core";
+import { SlackChannelAdapter } from "@agentrun-ai/channel-slack";
 import "../setup.js";
 
 // ── Cold-start initialization ───────────────────────────────────────────────
