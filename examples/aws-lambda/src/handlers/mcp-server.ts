@@ -19,7 +19,7 @@ import {
     ensurePlatform,
     buildAgentCard,
     trackUsage,
-} from "@agentrun-oss/core";
+} from "@agentrun-ai/core";
 import "../setup.js";
 
 // ── Cold-start initialization ───────────────────────────────────────────────

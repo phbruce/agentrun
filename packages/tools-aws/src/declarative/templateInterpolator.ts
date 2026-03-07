@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ResolvedSecrets } from "@agentrun-oss/core";
+import type { ResolvedSecrets } from "@agentrun-ai/core";
 
 // ---------------------------------------------------------------------------
 // Built-in variables available in all templates

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// @agentrun-oss/tools-aws — AWS infrastructure monitoring tools
+// @agentrun-ai/tools-aws — AWS infrastructure monitoring tools
 
 // AWS clients
 export { REGION, lambdaClient, eksClient, rdsClient, cwlClient, sqsClient, redactEnvVars } from "./_clients.js";

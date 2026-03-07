@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { logger, getToolRegistry } from "@agentrun-oss/core";
-import type { ToolHandler } from "@agentrun-oss/core";
+import { logger, getToolRegistry } from "@agentrun-ai/core";
+import type { ToolHandler } from "@agentrun-ai/core";
 
 // ---------------------------------------------------------------------------
 // JSON-RPC types
@@ -180,7 +180,7 @@ export class McpServer {
  *
  * @example
  * ```ts
- * import { createMcpServer } from "@agentrun-oss/channel-mcp";
+ * import { createMcpServer } from "@agentrun-ai/channel-mcp";
  *
  * const server = createMcpServer({ name: "my-tools" });
  * const response = await server.handleRequest(jsonRpcRequest);

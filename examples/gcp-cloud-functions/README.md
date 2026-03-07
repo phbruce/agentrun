@@ -2,10 +2,10 @@
 
 This example deploys AgentRun on Google Cloud Functions with Pub/Sub for async processing.
 
-> **Note**: There is no `@agentrun-oss/gcp` provider package yet. This example uses
-> `@agentrun-oss/aws` for the provider implementations (Bedrock for LLM, DynamoDB for
+> **Note**: There is no `@agentrun-ai/gcp` provider package yet. This example uses
+> `@agentrun-ai/aws` for the provider implementations (Bedrock for LLM, DynamoDB for
 > sessions, S3 for manifests). If you want to run fully on GCP, you can implement the
-> provider interfaces from `@agentrun-oss/core` (see the "Custom Providers" section below).
+> provider interfaces from `@agentrun-ai/core` (see the "Custom Providers" section below).
 
 ## Architecture
 
@@ -28,7 +28,7 @@ Slack ──> Cloud Function (events) ──> Pub/Sub ──> Cloud Function (pr
 
 ## Custom Providers (GCP-native)
 
-To avoid cross-cloud dependencies, implement these interfaces from `@agentrun-oss/core`:
+To avoid cross-cloud dependencies, implement these interfaces from `@agentrun-ai/core`:
 
 ```typescript
 import type {
@@ -38,7 +38,7 @@ import type {
     QueueProvider,
     CredentialProvider,
     UsageStore,
-} from "@agentrun-oss/core";
+} from "@agentrun-ai/core";
 
 // Example: Vertex AI LLM provider
 class VertexAiLlmProvider implements LlmProvider {
@@ -61,7 +61,7 @@ class GcsManifestStore implements ManifestStore {
 Then register them using `PlatformRegistry`:
 
 ```typescript
-import { PlatformRegistry } from "@agentrun-oss/core";
+import { PlatformRegistry } from "@agentrun-ai/core";
 
 const registry = PlatformRegistry.instance();
 registry.register({

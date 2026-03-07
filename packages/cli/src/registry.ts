@@ -3,7 +3,7 @@
 import fs from "fs";
 import path from "path";
 import yaml from "js-yaml";
-import { PackManifestSchema } from "@agentrun-oss/core";
+import { PackManifestSchema } from "@agentrun-ai/core";
 import { validateManifests } from "./validate.js";
 import { syncManifests } from "./sync.js";
 import { formatHuman } from "./output.js";

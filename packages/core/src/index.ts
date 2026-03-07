@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// @agentrun-oss/core — Multi-channel, manifest-driven, RBAC-gated AI Agent Runtime
+// @agentrun-ai/core — Multi-channel, manifest-driven, RBAC-gated AI Agent Runtime
 
 // Logger
 export { logger } from "./logger.js";
@@ -68,6 +68,10 @@ export type {
     UseCaseDef,
     SkillDef,
     KnowledgeBaseDef,
+    EvalDef,
+    TriggerEvalCase,
+    ExecutionEvalCase,
+    ExecutionExpectation,
     ManifestCatalog,
 } from "./catalog/types.js";
 
@@ -103,6 +107,7 @@ export {
     RemoteSkillSchema,
     RemoteKnowledgeBaseSchema,
     UserSkillSchema,
+    EvalManifestSchema,
 } from "./catalog/packTypes.js";
 
 export type { PackDef } from "./catalog/packTypes.js";

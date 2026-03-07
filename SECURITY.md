@@ -38,13 +38,13 @@ We ask that you do not publicly disclose the vulnerability until a fix has been 
 
 ## Scope
 
-This policy applies to all packages under the `@agentrun-oss` npm scope:
+This policy applies to all packages under the `@agentrun-ai` npm scope:
 
-- `@agentrun-oss/core`
-- `@agentrun-oss/aws`
-- `@agentrun-oss/channel-slack`
-- `@agentrun-oss/channel-mcp`
-- `@agentrun-oss/tools-aws`
-- `@agentrun-oss/tools-github`
-- `@agentrun-oss/tools-jira`
-- `@agentrun-oss/cli`
+- `@agentrun-ai/core`
+- `@agentrun-ai/aws`
+- `@agentrun-ai/channel-slack`
+- `@agentrun-ai/channel-mcp`
+- `@agentrun-ai/tools-aws`
+- `@agentrun-ai/tools-github`
+- `@agentrun-ai/tools-jira`
+- `@agentrun-ai/cli`

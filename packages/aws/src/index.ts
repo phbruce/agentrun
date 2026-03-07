@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { logger, PlatformRegistry } from "@agentrun-oss/core";
-import type { PlatformConfig } from "@agentrun-oss/core";
+import { logger, PlatformRegistry } from "@agentrun-ai/core";
+import type { PlatformConfig } from "@agentrun-ai/core";
 import { BedrockLlmProvider } from "./bedrockLlm.js";
 import { BedrockEmbeddingProvider } from "./bedrockEmbeddings.js";
 import { DynamoSessionStore } from "./dynamoSession.js";

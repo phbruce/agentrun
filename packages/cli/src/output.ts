@@ -17,6 +17,7 @@ export function formatHuman(result: ValidationResult): string {
     lines.push(`Workflows: ${result.workflows}`);
     lines.push(`UseCases: ${result.useCases}`);
     lines.push(`Skills: ${result.skills}`);
+    lines.push(`Evals: ${result.evals}`);
 
     if (result.securityFlags.length > 0) {
         lines.push("");

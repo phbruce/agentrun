@@ -2,7 +2,7 @@
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
-import type { UsageStore, MonthlyUsage } from "@agentrun-oss/core";
+import type { UsageStore, MonthlyUsage } from "@agentrun-ai/core";
 
 export class DynamoUsageStore implements UsageStore {
     private client: DynamoDBDocumentClient;

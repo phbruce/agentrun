@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { logger, PlatformRegistry } from "@agentrun-oss/core";
+import { logger, PlatformRegistry } from "@agentrun-ai/core";
 
 function getBaseUrl(): string {
     try {

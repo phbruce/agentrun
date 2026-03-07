@@ -15,7 +15,7 @@ const _packToolFactories = new Map<string, Record<string, (secrets: ResolvedSecr
 
 /**
  * Register a tool factory that provides tools for the registry.
- * Tool packages (e.g., @agentrun-oss/tools-aws) call this to register their tools.
+ * Tool packages (e.g., @agentrun-ai/tools-aws) call this to register their tools.
  */
 export function registerToolFactory(factory: ToolFactory): void {
     _factories.push(factory);

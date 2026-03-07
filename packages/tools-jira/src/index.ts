@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// @agentrun-oss/tools-jira — Jira issue tracking tools
+// @agentrun-ai/tools-jira — Jira issue tracking tools
 
 export { jiraApi, toAdf, getBrowseUrl } from "./_api.js";
 export { searchJiraIssues } from "./searchJiraIssues.js";

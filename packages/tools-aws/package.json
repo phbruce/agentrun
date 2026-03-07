@@ -1,5 +1,5 @@
 {
-  "name": "@agentrun-oss/tools-aws",
+  "name": "@agentrun-ai/tools-aws",
   "version": "0.1.0",
   "description": "AWS infrastructure tools: EKS, RDS, Lambda, CloudWatch, SQS monitoring + declarative tool engine",
   "license": "AGPL-3.0-only",
@@ -22,7 +22,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "peerDependencies": {
-    "@agentrun-oss/core": "workspace:*"
+    "@agentrun-ai/core": "workspace:*"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",

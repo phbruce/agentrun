@@ -7,7 +7,7 @@ import type { PlatformConfig } from "./types.js";
 
 /**
  * Provider registration function type.
- * Implementations (e.g., @agentrun-oss/aws) register concrete providers.
+ * Implementations (e.g., @agentrun-ai/aws) register concrete providers.
  */
 export type ProviderRegistrar = (config: PlatformConfig) => void;
 
@@ -19,7 +19,7 @@ let _registrar: ProviderRegistrar | null = null;
  * Must be called before bootstrapPlatform().
  *
  * Example:
- *   import { registerAwsProviders } from "@agentrun-oss/aws";
+ *   import { registerAwsProviders } from "@agentrun-ai/aws";
  *   setProviderRegistrar(registerAwsProviders);
  */
 export function setProviderRegistrar(registrar: ProviderRegistrar): void {

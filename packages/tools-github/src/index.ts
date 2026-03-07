@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// @agentrun-oss/tools-github — GitHub PR and commit monitoring tools
+// @agentrun-ai/tools-github — GitHub PR and commit monitoring tools
 
 export { getOrg, getAllowedRepos, githubApi } from "./_api.js";
 export { listOpenPrs } from "./listOpenPrs.js";

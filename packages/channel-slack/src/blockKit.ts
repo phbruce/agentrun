@@ -3,7 +3,7 @@
 import {
     classifyQuery,
     type ResponseCategory,
-} from "@agentrun-oss/core";
+} from "@agentrun-ai/core";
 import { formatGreeting, formatCategoryResponse, formatErrorBlocks } from "./formatting.js";
 
 interface ToolUsageEntry {
@@ -37,5 +37,5 @@ export function formatErrorResponse(query: string, error: string): any[] {
     return formatErrorBlocks(query, error);
 }
 
-export { classifyQuery, type ResponseCategory } from "@agentrun-oss/core";
+export { classifyQuery, type ResponseCategory } from "@agentrun-ai/core";
 export { formatGreeting } from "./formatting.js";

@@ -2,7 +2,7 @@
 
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import { PlatformRegistry } from "@agentrun-oss/core";
+import { PlatformRegistry } from "@agentrun-ai/core";
 
 export function createSearchKnowledgeBase() {
     return tool(

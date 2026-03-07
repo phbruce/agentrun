@@ -3578,14 +3578,14 @@ AgentRun is published as 8 independent npm packages:
 
 | Package | Responsibility |
 |---------|---------------|
-| `@agentrun-oss/core` | Types, interfaces, provider registry |
-| `@agentrun-oss/aws` | AWS providers (Bedrock, STS, DynamoDB, S3, SQS, Secrets Manager) |
-| `@agentrun-oss/tools-aws` | Declarative AWS tools |
-| `@agentrun-oss/tools-github` | GitHub tools |
-| `@agentrun-oss/tools-jira` | Jira tools |
-| `@agentrun-oss/sdk` | Agent SDK, Direct Executor, Orchestrator |
-| `@agentrun-oss/cli` | CLI for validation, ingestion, and debug |
-| `@agentrun-oss/bridge` | MCP bridge (shared entrypoint) |
+| `@agentrun-ai/core` | Types, interfaces, provider registry |
+| `@agentrun-ai/aws` | AWS providers (Bedrock, STS, DynamoDB, S3, SQS, Secrets Manager) |
+| `@agentrun-ai/tools-aws` | Declarative AWS tools |
+| `@agentrun-ai/tools-github` | GitHub tools |
+| `@agentrun-ai/tools-jira` | Jira tools |
+| `@agentrun-ai/sdk` | Agent SDK, Direct Executor, Orchestrator |
+| `@agentrun-ai/cli` | CLI for validation, ingestion, and debug |
+| `@agentrun-ai/bridge` | MCP bridge (shared entrypoint) |
 
 ### 4.12.2 Extensibility Pattern
 
@@ -3593,9 +3593,9 @@ AgentRun uses *Provider Registrar* to connect implementations:
 
 ```typescript
 // setup.ts
-import { setProviderRegistrar } from "@agentrun-oss/core";
-import { registerAwsProviders } from "@agentrun-oss/aws";
-import { registerToolFactory } from "@agentrun-oss/tools-aws";
+import { setProviderRegistrar } from "@agentrun-ai/core";
+import { registerAwsProviders } from "@agentrun-ai/aws";
+import { registerToolFactory } from "@agentrun-ai/tools-aws";
 
 setProviderRegistrar(registerAwsProviders);
 registerToolFactory();
@@ -5025,7 +5025,7 @@ Marginal cost: $0 (Aurora already provisioned, Titan embed ~$0.00002/1K tokens)
                          +-----------------+
 ```
 
-The `KnowledgeBaseProvider` is an interface in `@agentrun-oss/core`:
+The `KnowledgeBaseProvider` is an interface in `@agentrun-ai/core`:
 
 ```typescript
 interface KnowledgeBaseProvider {
@@ -5122,7 +5122,7 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *hook* | Function that intercepts the lifecycle of a tool call. AgentRun uses `preToolUse` (before execution, for security) and `postToolUse` (after execution, for auditing). |
 | IDP | *Internal Developer Platform*. Internal platform that provides self-service tools and services for development teams. |
 | *keychain* | Encrypted credential storage of the operating system (macOS Keychain, GNOME Keyring, Windows Credential Manager). |
-| *KnowledgeBaseProvider* | Interface in `@agentrun-oss/core` that abstracts queries to vector knowledge bases. AWS implementation uses Bedrock KB (`BedrockKBProvider`); custom implementation uses pgvector directly. |
+| *KnowledgeBaseProvider* | Interface in `@agentrun-ai/core` that abstracts queries to vector knowledge bases. AWS implementation uses Bedrock KB (`BedrockKBProvider`); custom implementation uses pgvector directly. |
 | *last-write-wins* | Conflict resolution strategy where the most recent version overwrites the previous one. Used in pack inheritance. |
 | *LlmProvider* | Platform interface for language model calls (summarization, classification). AWS implementation: `BedrockLlmProvider`. |
 | LLM | *Large Language Model*. Large-scale language model that processes natural language text. AgentRun uses LLMs for query classification and result summarization. |

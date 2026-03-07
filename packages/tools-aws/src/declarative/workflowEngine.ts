@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { logger } from "@agentrun-oss/core";
-import type { ToolDef, WorkflowStep, ResolvedSecrets } from "@agentrun-oss/core";
+import { logger } from "@agentrun-ai/core";
+import type { ToolDef, WorkflowStep, ResolvedSecrets } from "@agentrun-ai/core";
 import { interpolate } from "./templateInterpolator.js";
 import { applyOutputTransform } from "./outputTransform.js";
 import {

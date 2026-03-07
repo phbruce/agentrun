@@ -2,7 +2,7 @@
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import type { SessionStore, SessionMessage } from "@agentrun-oss/core";
+import type { SessionStore, SessionMessage } from "@agentrun-ai/core";
 
 export class DynamoSessionStore implements SessionStore {
     private client: DynamoDBDocumentClient;

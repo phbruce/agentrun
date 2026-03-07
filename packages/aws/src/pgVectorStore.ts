@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { RDSDataClient, ExecuteStatementCommand } from "@aws-sdk/client-rds-data";
-import type { VectorStore, VectorChunk } from "@agentrun-oss/core";
+import type { VectorStore, VectorChunk } from "@agentrun-ai/core";
 
 /**
  * pgvector-backed VectorStore using Aurora Data API (HTTP endpoint).

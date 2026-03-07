@@ -1,5 +1,5 @@
 {
-  "name": "@agentrun-oss/core",
+  "name": "@agentrun-ai/core",
   "version": "0.1.0",
   "description": "Core runtime: orchestrator, RBAC, catalog, channels, platform abstraction",
   "license": "AGPL-3.0-only",
