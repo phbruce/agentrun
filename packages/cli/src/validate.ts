@@ -12,7 +12,8 @@ import {
     RemoteSkillSchema,
     RemoteKnowledgeBaseSchema,
     UserSkillSchema,
-} from "@agentrun-oss/core";
+    EvalManifestSchema,
+} from "@agentrun-ai/core";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,6 +41,7 @@ export interface ValidationResult {
     workflows: number;
     useCases: number;
     skills: number;
+    evals: number;
     errors: ValidationError[];
     warnings: ValidationWarning[];
     securityFlags: SecurityFlag[];
@@ -81,11 +83,15 @@ export function validateManifests(dir: string): ValidationResult {
 
     const toolNames = new Set<string>();
     const workflowNames = new Set<string>();
+    const skillNames = new Set<string>();
+    const useCaseNames = new Set<string>();
+    const evalTargets: Array<{ file: string; kind: string; name: string }> = [];
     let fileCount = 0;
     let toolCount = 0;
     let workflowCount = 0;
     let useCaseCount = 0;
     let skillCount = 0;
+    let evalCount = 0;
 
     const allFiles = walkYaml(dir);
 
@@ -146,11 +152,18 @@ export function validateManifests(dir: string): ValidationResult {
                     break;
                 case "UseCase":
                     RemoteUseCaseSchema.parse(doc);
+                    useCaseNames.add(doc.metadata.name);
                     useCaseCount++;
                     break;
                 case "Skill":
                     RemoteSkillSchema.parse(doc);
+                    skillNames.add(doc.metadata.name);
                     skillCount++;
+                    break;
+                case "Eval":
+                    EvalManifestSchema.parse(doc);
+                    evalTargets.push({ file: relPath, kind: doc.spec.target.kind, name: doc.spec.target.name });
+                    evalCount++;
                     break;
                 case "KnowledgeBase":
                     RemoteKnowledgeBaseSchema.parse(doc);
@@ -222,12 +235,24 @@ export function validateManifests(dir: string): ValidationResult {
         }
     }
 
+    // Pass 3: Eval target cross-reference
+    for (const { file, kind, name } of evalTargets) {
+        const targetSet = kind === "Skill" ? skillNames : useCaseNames;
+        if (!targetSet.has(name)) {
+            warnings.push({
+                file,
+                message: `Eval targets unknown ${kind} "${name}"`,
+            });
+        }
+    }
+
     return {
         files: fileCount,
         tools: toolCount,
         workflows: workflowCount,
         useCases: useCaseCount,
         skills: skillCount,
+        evals: evalCount,
         errors,
         warnings,
         securityFlags,

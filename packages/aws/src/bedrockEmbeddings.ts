@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
-import type { EmbeddingProvider, EmbeddingResult } from "@agentrun-oss/core";
+import type { EmbeddingProvider, EmbeddingResult } from "@agentrun-ai/core";
 
 export class BedrockEmbeddingProvider implements EmbeddingProvider {
     private client: BedrockRuntimeClient;

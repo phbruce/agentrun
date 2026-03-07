@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// @agentrun-oss/channel-slack — Slack channel adapter for AgentRun
+// @agentrun-ai/channel-slack — Slack channel adapter for AgentRun
 
 // Adapter
 export { SlackChannelAdapter } from "./adapter.js";

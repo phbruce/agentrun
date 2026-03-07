@@ -2,7 +2,7 @@
 
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { createHash } from "crypto";
-import type { QueueProvider } from "@agentrun-oss/core";
+import type { QueueProvider } from "@agentrun-ai/core";
 
 /**
  * SQS-backed QueueProvider.

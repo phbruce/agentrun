@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import type { ManifestStore } from "@agentrun-oss/core";
+import type { ManifestStore } from "@agentrun-ai/core";
 
 export class S3ManifestStore implements ManifestStore {
     private s3: S3Client;

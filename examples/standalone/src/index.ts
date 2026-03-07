@@ -20,9 +20,9 @@ import {
     ensurePlatform,
     buildAgentCard,
     trackUsage,
-} from "@agentrun-oss/core";
-import type { ChannelContext } from "@agentrun-oss/core";
-import { SlackChannelAdapter, addReaction } from "@agentrun-oss/channel-slack";
+} from "@agentrun-ai/core";
+import type { ChannelContext } from "@agentrun-ai/core";
+import { SlackChannelAdapter, addReaction } from "@agentrun-ai/channel-slack";
 import "./setup.js";
 
 // ── Configuration ───────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChannelAdapter, ChannelContext, AgentResult } from "@agentrun-oss/core";
+import type { ChannelAdapter, ChannelContext, AgentResult } from "@agentrun-ai/core";
 import { postToResponseUrl, postThreadMessage, addReaction } from "./slackClient.js";
 import { formatAgentResponse, formatErrorResponse } from "./blockKit.js";
 import { formatGreeting } from "./formatting.js";

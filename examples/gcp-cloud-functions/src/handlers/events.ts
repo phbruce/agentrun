@@ -5,8 +5,8 @@
 
 import type { Request, Response } from "@google-cloud/functions-framework";
 import { PubSub } from "@google-cloud/pubsub";
-import { addReaction } from "@agentrun-oss/channel-slack";
-import { bootstrapPlatform } from "@agentrun-oss/core";
+import { addReaction } from "@agentrun-ai/channel-slack";
+import { bootstrapPlatform } from "@agentrun-ai/core";
 import "../setup.js";
 
 // ── Cold-start initialization ───────────────────────────────────────────────

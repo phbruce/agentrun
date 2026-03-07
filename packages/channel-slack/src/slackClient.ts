@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { logger } from "@agentrun-oss/core";
+import { logger } from "@agentrun-ai/core";
 
 /**
  * Resolve the Slack bot token from environment.

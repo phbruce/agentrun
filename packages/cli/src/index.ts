@@ -6,6 +6,9 @@ import { syncManifests } from "./sync.js";
 import { listPacks, getPackInfo, publishPack } from "./registry.js";
 import { ingestDocument } from "./ingest.js";
 import { formatHuman, formatJson } from "./output.js";
+import { runEvals } from "./eval.js";
+import type { EvalMode } from "./eval.js";
+import { formatEvalHuman, formatEvalJson } from "./evalOutput.js";
 
 // ---------------------------------------------------------------------------
 // Argument parsing
@@ -213,6 +216,46 @@ async function runIngest(args: string[]): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Eval command
+// ---------------------------------------------------------------------------
+
+async function runEval(args: string[]): Promise<void> {
+    const { flags, positional } = parseArgs(args);
+    const dir = positional[0];
+
+    if (!dir) {
+        console.error("Usage: agentrun eval <dir> [--mode trigger|execution|all] [--filter <name>] [--json] [--threshold <0.0-1.0>]");
+        process.exit(1);
+    }
+
+    const mode = (flags["mode"] ?? "all") as EvalMode;
+    if (!["trigger", "execution", "all"].includes(mode)) {
+        console.error(`Invalid mode: ${mode}. Must be trigger, execution, or all.`);
+        process.exit(1);
+    }
+
+    const threshold = parseFloat(flags["threshold"] ?? "0.8");
+    if (isNaN(threshold) || threshold < 0 || threshold > 1) {
+        console.error("Threshold must be a number between 0.0 and 1.0");
+        process.exit(1);
+    }
+
+    const filter = flags["filter"];
+    const useJson = flags["json"] === "true" || flags["format"] === "json";
+
+    const summary = await runEvals({
+        dir,
+        mode,
+        filter,
+        threshold,
+        onProgress: useJson ? undefined : (msg) => console.log(msg),
+    });
+
+    console.log(useJson ? formatEvalJson(summary) : formatEvalHuman(summary));
+    process.exit(summary.overallPass ? 0 : 1);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -231,6 +274,9 @@ async function main(): Promise<void> {
             break;
         case "ingest":
             await runIngest(args);
+            break;
+        case "eval":
+            await runEval(args);
             break;
         case "help":
         case "--help":
@@ -268,6 +314,12 @@ Commands:
 
   pack publish <dir>            Validate, sync, and update registry
     --bucket <bucket>           S3 bucket
+
+  eval <dir>                    Run eval cases against skills/use-cases
+    --mode trigger|execution|all  Eval mode (default: all)
+    --filter <name>             Filter evals by name pattern
+    --json                      Output as JSON
+    --threshold <0.0-1.0>       Pass/fail threshold (default: 0.8)
 
   ingest <file>                 Ingest a document into the knowledge base
     --source <name>             Source name (default: filename)

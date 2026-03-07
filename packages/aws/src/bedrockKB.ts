@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { KnowledgeBaseProvider, KnowledgeBaseSearchResult } from "@agentrun-oss/core";
+import type { KnowledgeBaseProvider, KnowledgeBaseSearchResult } from "@agentrun-ai/core";
 
 /**
  * Amazon Bedrock Knowledge Bases provider.

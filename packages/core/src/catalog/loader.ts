@@ -110,7 +110,8 @@ export function loadManifestsFromRaw(
     }
 
     const knowledgeBases = new Map();
-    return { tools, workflows, useCases, skills, knowledgeBases };
+    const evals = new Map();
+    return { tools, workflows, useCases, skills, knowledgeBases, evals };
 }
 
 /**

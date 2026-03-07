@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ResponseCategory } from "@agentrun-oss/core";
+import type { ResponseCategory } from "@agentrun-ai/core";
 import {
     getRoleForUser,
     getDisplayName,
@@ -9,7 +9,7 @@ import {
     getWorkflowsForUseCase,
     getSkillsForRole,
     getMonthlyUsage,
-} from "@agentrun-oss/core";
+} from "@agentrun-ai/core";
 import { markdownToRichTextBlocks } from "./richTextSerializer.js";
 import { getUserProfileImage } from "./slackClient.js";
 import { renderGreeting as renderGreetingTemplate, renderError as renderErrorTemplate } from "./templateRenderer.js";

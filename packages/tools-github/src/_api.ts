@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { logger, PlatformRegistry, getInstallationToken } from "@agentrun-oss/core";
+import { logger, PlatformRegistry, getInstallationToken } from "@agentrun-ai/core";
 
 function getGitHubConfig(): { org: string; allowedRepos: string[] } {
     try {
