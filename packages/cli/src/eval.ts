@@ -2,6 +2,7 @@
 
 import fs from "fs";
 import path from "path";
+import { execFile, execSync } from "child_process";
 import yaml from "js-yaml";
 import { EvalManifestSchema } from "@agentrun-ai/core";
 import type { EvalDef } from "@agentrun-ai/core";
@@ -45,46 +46,95 @@ function loadEvalManifests(dir: string, filter?: string): EvalDef[] {
 }
 
 // ---------------------------------------------------------------------------
-// Claude Code SDK lazy loader
+// Claude CLI subprocess runner
 // ---------------------------------------------------------------------------
 
-type QueryFn = (options: {
-    prompt: string;
-    options: {
-        allowedTools?: string[];
-        maxTurns?: number;
-        permissionMode?: string;
-        systemPrompt?: string;
-    };
-}) => AsyncIterable<any>;
+interface ClaudeResult {
+    output: string;
+    toolsCalled: Set<string>;
+}
 
-let _query: QueryFn | null = null;
-
-async function getQuery(): Promise<QueryFn> {
-    if (_query) return _query;
-
+function findClaudeBin(): string {
     try {
-        // @ts-ignore — optional dependency, loaded at runtime only when eval command is used
-        const sdk = await import("@anthropic-ai/claude-code");
-        _query = sdk.query as unknown as QueryFn;
-        return _query;
+        const result = execSync("which claude", { encoding: "utf-8" }).trim();
+        if (result) return result;
     } catch {
-        throw new Error(
-            "Claude Code SDK (@anthropic-ai/claude-code) is required for eval execution.\n" +
-            "Install it: npm install -g @anthropic-ai/claude-code",
-        );
+        // fall through
     }
+    throw new Error(
+        "Claude CLI not found. Install it: npm install -g @anthropic-ai/claude-code\n" +
+        "Then authenticate: claude login",
+    );
+}
+
+function runClaude(prompt: string, maxTurns: number, cwd?: string): Promise<ClaudeResult> {
+    const bin = findClaudeBin();
+
+    return new Promise((resolve, reject) => {
+        const args = [
+            "-p", prompt,
+            "--output-format", "stream-json",
+            "--max-turns", String(maxTurns),
+            "--verbose",
+        ];
+
+        const child = execFile(bin, args, {
+            maxBuffer: 10 * 1024 * 1024,
+            timeout: 120_000,
+            cwd: cwd ?? process.cwd(),
+            env: { ...process.env },
+        }, (err, stdout, stderr) => {
+            if (err && !stdout) {
+                reject(new Error(`Claude CLI failed: ${err.message}`));
+                return;
+            }
+
+            let output = "";
+            const toolsCalled = new Set<string>();
+
+            // Parse stream-json: one JSON object per line
+            for (const line of stdout.split("\n")) {
+                if (!line.trim()) continue;
+                try {
+                    const msg = JSON.parse(line);
+
+                    // Collect text from assistant messages
+                    if (msg.type === "assistant" && Array.isArray(msg.content)) {
+                        for (const block of msg.content) {
+                            if (block.type === "text") {
+                                output += block.text;
+                            }
+                            if (block.type === "tool_use") {
+                                const toolName = block.name?.replace(/^mcp__[^_]+__/, "") ?? block.name;
+                                toolsCalled.add(toolName);
+                                toolsCalled.add(block.name);
+                            }
+                        }
+                    }
+
+                    // Collect result text
+                    if (msg.type === "result" && typeof msg.result === "string") {
+                        output += msg.result;
+                    }
+                } catch {
+                    // Not valid JSON, skip
+                }
+            }
+
+            resolve({ output, toolsCalled });
+        });
+    });
 }
 
 // ---------------------------------------------------------------------------
-// Trigger evaluation (fast — single-turn LLM call per case)
+// Trigger evaluation (fast — single-turn CLI call per case)
 // ---------------------------------------------------------------------------
 
 async function runTriggerCases(
     evalDef: EvalDef,
+    cwd?: string,
     onProgress?: (msg: string) => void,
 ): Promise<TriggerCaseResult[]> {
-    const query = await getQuery();
     const results: TriggerCaseResult[] = [];
 
     for (const tc of evalDef.triggerCases) {
@@ -92,30 +142,10 @@ async function runTriggerCases(
 
         let triggered = false;
         try {
-            const messages: any[] = [];
-            for await (const msg of query({
-                prompt: tc.query,
-                options: {
-                    allowedTools: ["Skill"],
-                    maxTurns: 1,
-                    permissionMode: "bypassPermissions",
-                    systemPrompt: "You have access to skills via the Skill tool. If the user's request matches a skill, invoke it. Otherwise respond normally.",
-                },
-            })) {
-                messages.push(msg);
-            }
-
+            const { toolsCalled } = await runClaude(tc.query, 1, cwd);
             // Check if the Skill tool was called
-            triggered = messages.some(
-                (m: any) =>
-                    m.type === "assistant" &&
-                    Array.isArray(m.content) &&
-                    m.content.some(
-                        (block: any) => block.type === "tool_use" && block.name === "Skill",
-                    ),
-            );
+            triggered = toolsCalled.has("Skill");
         } catch {
-            // LLM error — treat as not triggered
             triggered = false;
         }
 
@@ -131,7 +161,7 @@ async function runTriggerCases(
 }
 
 // ---------------------------------------------------------------------------
-// Execution evaluation (full — multi-turn LLM call)
+// Execution evaluation (full — multi-turn CLI call)
 // ---------------------------------------------------------------------------
 
 function checkExpectation(
@@ -171,8 +201,6 @@ function checkExpectation(
             }
         }
         case "llm_judge": {
-            // LLM judge deferred — requires separate cheap model call
-            // For now, mark as pass with a note
             return { type: exp.type, value: exp.value, pass: true, detail: "llm_judge not yet implemented" };
         }
         default:
@@ -182,44 +210,21 @@ function checkExpectation(
 
 async function runExecutionCases(
     evalDef: EvalDef,
+    cwd?: string,
     onProgress?: (msg: string) => void,
 ): Promise<ExecutionCaseResult[]> {
-    const query = await getQuery();
     const results: ExecutionCaseResult[] = [];
 
     for (const ec of evalDef.executionCases) {
         onProgress?.(`  execution [${ec.id}]: "${ec.prompt}"`);
 
         let output = "";
-        const toolsCalled = new Set<string>();
+        let toolsCalled = new Set<string>();
 
         try {
-            for await (const msg of query({
-                prompt: ec.prompt,
-                options: {
-                    maxTurns: 10,
-                    permissionMode: "bypassPermissions",
-                },
-            })) {
-                // Collect text output
-                if (msg.type === "assistant" && Array.isArray(msg.content)) {
-                    for (const block of msg.content) {
-                        if (block.type === "text") {
-                            output += block.text;
-                        }
-                        if (block.type === "tool_use") {
-                            // Track tool names (strip mcp__ prefix variants)
-                            const toolName = block.name?.replace(/^mcp__[^_]+__/, "") ?? block.name;
-                            toolsCalled.add(toolName);
-                            toolsCalled.add(block.name); // also add full name
-                        }
-                    }
-                }
-                // Also collect result text
-                if (msg.type === "result" && typeof msg.result === "string") {
-                    output += msg.result;
-                }
-            }
+            const result = await runClaude(ec.prompt, 10, cwd);
+            output = result.output;
+            toolsCalled = result.toolsCalled;
         } catch (err: any) {
             output = `[ERROR] ${err.message}`;
         }
@@ -249,18 +254,36 @@ export interface EvalOptions {
     mode: EvalMode;
     filter?: string;
     threshold: number;
+    cwd?: string;
     onProgress?: (msg: string) => void;
 }
 
 export async function runEvals(options: EvalOptions): Promise<EvalSummary> {
     const { dir, mode, filter, threshold, onProgress } = options;
 
+    // Resolve project root: walk up from dir to find the directory containing .claude/
+    let projectCwd = options.cwd;
+    if (!projectCwd) {
+        const absDir = path.resolve(dir);
+        let candidate = absDir;
+        while (candidate !== path.dirname(candidate)) {
+            if (fs.existsSync(path.join(candidate, ".claude"))) {
+                projectCwd = candidate;
+                break;
+            }
+            candidate = path.dirname(candidate);
+        }
+    }
+
     const evalDefs = loadEvalManifests(dir, filter);
     if (evalDefs.length === 0) {
         return { results: [], threshold, totalPass: 0, totalFail: 0, overallPass: true };
     }
 
-    onProgress?.(`Found ${evalDefs.length} eval(s)\n`);
+    // Verify claude CLI is available upfront
+    findClaudeBin();
+
+    onProgress?.(`Found ${evalDefs.length} eval(s)${projectCwd ? ` (cwd: ${projectCwd})` : ""}\n`);
 
     const results: EvalResult[] = [];
 
@@ -271,11 +294,11 @@ export async function runEvals(options: EvalOptions): Promise<EvalSummary> {
         let executionResults: ExecutionCaseResult[] = [];
 
         if ((mode === "trigger" || mode === "all") && evalDef.triggerCases.length > 0) {
-            triggerResults = await runTriggerCases(evalDef, onProgress);
+            triggerResults = await runTriggerCases(evalDef, projectCwd, onProgress);
         }
 
         if ((mode === "execution" || mode === "all") && evalDef.executionCases.length > 0) {
-            executionResults = await runExecutionCases(evalDef, onProgress);
+            executionResults = await runExecutionCases(evalDef, projectCwd, onProgress);
         }
 
         const triggerPassRate =
