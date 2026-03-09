@@ -18,12 +18,12 @@ const GREETING_PATTERNS = new Set([
 
 const CATEGORY_KEYWORDS: Record<Exclude<ResponseCategory, "greeting" | "generic">, string[]> = {
     lambda: ["lambda", "lambdas", "função", "funcao", "funções", "funcoes", "function", "functions", "invoke", "timeout", "memory", "runtime", "cold start", "concurrency"],
-    kubernetes: ["k8s", "kubernetes", "pod", "pods", "deploy", "deployment", "node", "nodes", "eks", "cluster", "namespace", "service", "ingress", "hpa", "istio", "helm"],
+    kubernetes: ["k8s", "kubernetes", "pod", "pods", "node", "nodes", "eks", "cluster", "namespace", "service", "ingress", "hpa", "istio", "helm"],
     database: ["database", "banco", "db", "rds", "aurora", "postgres", "postgresql", "proxy", "rds proxy", "query", "conexão", "conexao", "connection", "oltp"],
     logs: ["log", "logs", "cloudwatch", "erro", "error", "exception", "stack trace", "stacktrace"],
-    pull_requests: ["pr", "prs", "pull request", "pull requests", "merge", "branch", "commit", "commits", "github", "review"],
+    pull_requests: ["pr", "prs", "pull request", "pull requests", "merge", "branch", "commit", "commits", "github", "review", "deploy", "deployment", "deployado", "release", "shipped", "mergou", "merged"],
     metrics: ["métrica", "metrica", "métricas", "metricas", "metric", "metrics", "cpu", "memória", "memoria", "memory", "latência", "latencia", "latency", "throughput", "invocations", "errors", "duration"],
-    sqs: ["sqs", "fila", "filas", "queue", "queues", "dlq", "dead letter", "mensagens paradas", "backlog"],
+    sqs: ["sqs", "fila", "filas", "queue", "queues", "dlq", "dead letter", "mensagens paradas", "backlog", "stuck", "mensagens falhando"],
 };
 
 export function classifyQuery(query: string): ResponseCategory {

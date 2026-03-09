@@ -99,9 +99,12 @@ function getSkillCategories(skill: SkillDef): Set<string> {
         }
     }
 
-    // Multi-category skills (3+) also trigger on "generic" queries
-    // e.g., "como esta a infra?" → generic → health-check (uses eks+rds+lambda+sqs)
+    // Multi-category skills (3+ tool categories) are "overview" skills.
+    // They should only trigger on generic queries, not on specific category queries.
+    // e.g., health-check uses eks+rds+lambda+sqs tools but should only trigger
+    // on "como esta a infra?" (generic), not "busca a lambda X" (lambda-specific).
     if (categories.size >= 3) {
+        categories.clear();
         categories.add("generic");
     }
 
