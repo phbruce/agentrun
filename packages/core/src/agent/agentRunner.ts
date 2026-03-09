@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import { logger } from "../logger.js";
 import { buildSystemPrompt } from "./systemPrompt.js";
 import { createPreToolUseHook } from "../hooks/preToolUse.js";
@@ -13,6 +12,12 @@ import { getIdentityProvider } from "../identity/index.js";
 import { createClientsForIdentity } from "../mcp/clientFactory.js";
 import type { ResolvedIdentity } from "../identity/types.js";
 import { getModels } from "../platform/models.js";
+
+// Lazy import — claude-agent-sdk is only available in Lambda runtime, not in CLI
+async function getQuery(): Promise<typeof import("@anthropic-ai/claude-agent-sdk")["query"]> {
+    const mod = await import("@anthropic-ai/claude-agent-sdk");
+    return mod.query;
+}
 
 interface ToolUsageEntry {
     tool: string;
@@ -61,6 +66,7 @@ export async function processInfraQuery(userQuery: string, userId: string, model
     logger.info({ userId, role, allowedTools, maxTurns: config.maxTurns, maxBudgetUsd: config.maxBudgetUsd }, "AgentRun agent starting");
 
     try {
+        const query = await getQuery();
         for await (const message of query({
             prompt: userQuery,
             options: {
@@ -143,6 +149,7 @@ export async function processSkill(skill: SkillDef, args: string, userId: string
     logger.info({ userId, role, skill: skill.command, args, allowedTools, maxTurns: skill.maxTurns, maxBudgetUsd: skill.maxBudgetUsd }, "AgentRun skill starting");
 
     try {
+        const query = await getQuery();
         for await (const message of query({
             prompt,
             options: {
