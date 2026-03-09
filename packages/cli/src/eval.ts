@@ -2,10 +2,9 @@
 
 import fs from "fs";
 import path from "path";
-import { execFile, execSync } from "child_process";
 import yaml from "js-yaml";
-import { EvalManifestSchema } from "@agentrun-ai/core";
-import type { EvalDef } from "@agentrun-ai/core";
+import { classifyQuery, EvalManifestSchema } from "@agentrun-ai/core";
+import type { EvalDef, SkillDef } from "@agentrun-ai/core";
 import type {
     EvalResult,
     EvalSummary,
@@ -15,7 +14,7 @@ import type {
 } from "./evalOutput.js";
 
 // ---------------------------------------------------------------------------
-// Manifest loader (load eval YAMLs from directory)
+// Manifest loader
 // ---------------------------------------------------------------------------
 
 function loadEvalManifests(dir: string, filter?: string): EvalDef[] {
@@ -45,109 +44,86 @@ function loadEvalManifests(dir: string, filter?: string): EvalDef[] {
     return evals;
 }
 
-// ---------------------------------------------------------------------------
-// Claude CLI subprocess runner
-// ---------------------------------------------------------------------------
+function loadSkillManifests(dir: string): Map<string, SkillDef> {
+    const skillsDir = path.join(dir, "skills");
+    if (!fs.existsSync(skillsDir)) return new Map();
 
-interface ClaudeResult {
-    output: string;
-    toolsCalled: Set<string>;
-}
+    const skills = new Map<string, SkillDef>();
+    for (const entry of fs.readdirSync(skillsDir)) {
+        if (!entry.endsWith(".yaml") && !entry.endsWith(".yml")) continue;
+        const content = fs.readFileSync(path.join(skillsDir, entry), "utf-8");
+        const doc = yaml.load(content) as any;
+        if (doc?.kind !== "Skill") continue;
 
-function findClaudeBin(): string {
-    try {
-        const result = execSync("which claude", { encoding: "utf-8" }).trim();
-        if (result) return result;
-    } catch {
-        // fall through
-    }
-    throw new Error(
-        "Claude CLI not found. Install it: npm install -g @anthropic-ai/claude-code\n" +
-        "Then authenticate: claude login",
-    );
-}
-
-function runClaude(prompt: string, maxTurns: number, cwd?: string): Promise<ClaudeResult> {
-    const bin = findClaudeBin();
-
-    return new Promise((resolve, reject) => {
-        const args = [
-            "-p", prompt,
-            "--output-format", "stream-json",
-            "--max-turns", String(maxTurns),
-            "--verbose",
-        ];
-
-        const child = execFile(bin, args, {
-            maxBuffer: 10 * 1024 * 1024,
-            timeout: 120_000,
-            cwd: cwd ?? process.cwd(),
-            env: { ...process.env },
-        }, (err, stdout, stderr) => {
-            if (err && !stdout) {
-                reject(new Error(`Claude CLI failed: ${err.message}`));
-                return;
-            }
-
-            let output = "";
-            const toolsCalled = new Set<string>();
-
-            // Parse stream-json: one JSON object per line
-            for (const line of stdout.split("\n")) {
-                if (!line.trim()) continue;
-                try {
-                    const msg = JSON.parse(line);
-
-                    // Collect text from assistant messages
-                    if (msg.type === "assistant" && Array.isArray(msg.content)) {
-                        for (const block of msg.content) {
-                            if (block.type === "text") {
-                                output += block.text;
-                            }
-                            if (block.type === "tool_use") {
-                                const toolName = block.name?.replace(/^mcp__[^_]+__/, "") ?? block.name;
-                                toolsCalled.add(toolName);
-                                toolsCalled.add(block.name);
-                            }
-                        }
-                    }
-
-                    // Collect result text
-                    if (msg.type === "result" && typeof msg.result === "string") {
-                        output += msg.result;
-                    }
-                } catch {
-                    // Not valid JSON, skip
-                }
-            }
-
-            resolve({ output, toolsCalled });
+        skills.set(doc.metadata.name, {
+            name: doc.metadata.name,
+            command: doc.spec.command,
+            description: doc.spec.description ?? "",
+            prompt: doc.spec.prompt ?? "",
+            tools: doc.spec.tools ?? [],
+            allowedRoles: doc.spec.allowedRoles ?? [],
+            maxTurns: doc.spec.maxTurns ?? 5,
+            maxBudgetUsd: doc.spec.maxBudgetUsd ?? 0.1,
+            args: doc.spec.args ?? false,
+            mode: doc.spec.mode ?? "agent",
         });
-    });
+    }
+
+    return skills;
 }
 
 // ---------------------------------------------------------------------------
-// Trigger evaluation (fast — single-turn CLI call per case)
+// Tool → classifier category mapping
 // ---------------------------------------------------------------------------
 
-async function runTriggerCases(
+const TOOL_TO_CATEGORIES: Record<string, string[]> = {
+    describe_eks_cluster: ["kubernetes"],
+    describe_rds: ["database"],
+    list_lambdas: ["lambda"],
+    get_lambda_details: ["lambda"],
+    search_cloudwatch_logs: ["logs"],
+    list_sqs_queues: ["sqs"],
+    get_sqs_attributes: ["sqs"],
+    list_open_prs: ["pull_requests"],
+    get_pr_details: ["pull_requests"],
+    recent_commits: ["pull_requests"],
+};
+
+function getSkillCategories(skill: SkillDef): Set<string> {
+    const categories = new Set<string>();
+
+    for (const tool of skill.tools) {
+        const cats = TOOL_TO_CATEGORIES[tool];
+        if (cats) {
+            for (const c of cats) categories.add(c);
+        }
+    }
+
+    // Multi-category skills (3+) also trigger on "generic" queries
+    // e.g., "como esta a infra?" → generic → health-check (uses eks+rds+lambda+sqs)
+    if (categories.size >= 3) {
+        categories.add("generic");
+    }
+
+    return categories;
+}
+
+// ---------------------------------------------------------------------------
+// Trigger evaluation (fast — pure classifyQuery, no LLM)
+// ---------------------------------------------------------------------------
+
+function runTriggerCases(
     evalDef: EvalDef,
-    cwd?: string,
+    skillCategories: Set<string>,
     onProgress?: (msg: string) => void,
-): Promise<TriggerCaseResult[]> {
+): TriggerCaseResult[] {
     const results: TriggerCaseResult[] = [];
 
     for (const tc of evalDef.triggerCases) {
-        onProgress?.(`  trigger: "${tc.query}"`);
+        const category = classifyQuery(tc.query);
+        const triggered = skillCategories.has(category);
 
-        let triggered = false;
-        try {
-            const { toolsCalled } = await runClaude(tc.query, 1, cwd);
-            // Check if the Skill tool was called
-            triggered = toolsCalled.has("Skill");
-        } catch {
-            triggered = false;
-        }
+        onProgress?.(`  trigger: "${tc.query}" → ${category} → ${triggered ? "yes" : "no"}`);
 
         results.push({
             query: tc.query,
@@ -161,83 +137,26 @@ async function runTriggerCases(
 }
 
 // ---------------------------------------------------------------------------
-// Execution evaluation (full — multi-turn CLI call)
+// Execution evaluation (placeholder — needs runtime)
 // ---------------------------------------------------------------------------
 
-function checkExpectation(
-    exp: { type: string; value: string },
-    output: string,
-    toolsCalled: Set<string>,
-): ExpectationResult {
-    switch (exp.type) {
-        case "contains": {
-            const pass = output.toLowerCase().includes(exp.value.toLowerCase());
-            return { type: exp.type, value: exp.value, pass, detail: pass ? undefined : "not found in output" };
-        }
-        case "not_contains": {
-            const pass = !output.toLowerCase().includes(exp.value.toLowerCase());
-            return { type: exp.type, value: exp.value, pass, detail: pass ? undefined : "found in output" };
-        }
-        case "tool_called": {
-            const pass = toolsCalled.has(exp.value);
-            return {
-                type: exp.type,
-                value: exp.value,
-                pass,
-                detail: pass ? undefined : `tool not called (called: ${[...toolsCalled].join(", ") || "none"})`,
-            };
-        }
-        case "tool_not_called": {
-            const pass = !toolsCalled.has(exp.value);
-            return { type: exp.type, value: exp.value, pass, detail: pass ? undefined : "tool was called" };
-        }
-        case "matches_regex": {
-            try {
-                const regex = new RegExp(exp.value, "i");
-                const pass = regex.test(output);
-                return { type: exp.type, value: exp.value, pass, detail: pass ? undefined : "regex did not match" };
-            } catch {
-                return { type: exp.type, value: exp.value, pass: false, detail: "invalid regex" };
-            }
-        }
-        case "llm_judge": {
-            return { type: exp.type, value: exp.value, pass: true, detail: "llm_judge not yet implemented" };
-        }
-        default:
-            return { type: exp.type, value: exp.value, pass: false, detail: `unknown type: ${exp.type}` };
-    }
-}
-
-async function runExecutionCases(
+function runExecutionCases(
     evalDef: EvalDef,
-    cwd?: string,
     onProgress?: (msg: string) => void,
-): Promise<ExecutionCaseResult[]> {
+): ExecutionCaseResult[] {
     const results: ExecutionCaseResult[] = [];
 
     for (const ec of evalDef.executionCases) {
-        onProgress?.(`  execution [${ec.id}]: "${ec.prompt}"`);
+        onProgress?.(`  execution [${ec.id}]: skipped (needs AWS runtime)`);
 
-        let output = "";
-        let toolsCalled = new Set<string>();
+        const expectations: ExpectationResult[] = ec.expectations.map((exp) => ({
+            type: exp.type,
+            value: exp.value,
+            pass: false,
+            detail: "skipped — execution eval requires AWS runtime",
+        }));
 
-        try {
-            const result = await runClaude(ec.prompt, 10, cwd);
-            output = result.output;
-            toolsCalled = result.toolsCalled;
-        } catch (err: any) {
-            output = `[ERROR] ${err.message}`;
-        }
-
-        const expectations: ExpectationResult[] = ec.expectations.map((exp) =>
-            checkExpectation(exp, output, toolsCalled),
-        );
-
-        const passedCount = expectations.filter((e) => e.pass).length;
-        const score = expectations.length > 0 ? passedCount / expectations.length : 0;
-        const pass = score >= evalDef.config.passThreshold;
-
-        results.push({ id: ec.id, prompt: ec.prompt, expectations, score, pass });
+        results.push({ id: ec.id, prompt: ec.prompt, expectations, score: 0, pass: false });
     }
 
     return results;
@@ -254,51 +173,45 @@ export interface EvalOptions {
     mode: EvalMode;
     filter?: string;
     threshold: number;
-    cwd?: string;
     onProgress?: (msg: string) => void;
 }
 
 export async function runEvals(options: EvalOptions): Promise<EvalSummary> {
     const { dir, mode, filter, threshold, onProgress } = options;
 
-    // Resolve project root: walk up from dir to find the directory containing .claude/
-    let projectCwd = options.cwd;
-    if (!projectCwd) {
-        const absDir = path.resolve(dir);
-        let candidate = absDir;
-        while (candidate !== path.dirname(candidate)) {
-            if (fs.existsSync(path.join(candidate, ".claude"))) {
-                projectCwd = candidate;
-                break;
-            }
-            candidate = path.dirname(candidate);
-        }
-    }
-
     const evalDefs = loadEvalManifests(dir, filter);
     if (evalDefs.length === 0) {
         return { results: [], threshold, totalPass: 0, totalFail: 0, overallPass: true };
     }
 
-    // Verify claude CLI is available upfront
-    findClaudeBin();
+    const skills = loadSkillManifests(dir);
 
-    onProgress?.(`Found ${evalDefs.length} eval(s)${projectCwd ? ` (cwd: ${projectCwd})` : ""}\n`);
+    onProgress?.(`Found ${evalDefs.length} eval(s), ${skills.size} skill(s)\n`);
 
     const results: EvalResult[] = [];
 
     for (const evalDef of evalDefs) {
         onProgress?.(`\nRunning: ${evalDef.name} (target: ${evalDef.target.kind}/${evalDef.target.name})`);
 
+        // Resolve skill categories for trigger eval
+        const skill = skills.get(evalDef.target.name);
+        const skillCategories = skill ? getSkillCategories(skill) : new Set<string>();
+
+        if (skill) {
+            onProgress?.(`  skill "${skill.command}" tools: [${skill.tools.join(", ")}] → categories: [${[...skillCategories].join(", ")}]`);
+        } else {
+            onProgress?.(`  ⚠ skill "${evalDef.target.name}" not found in manifests`);
+        }
+
         let triggerResults: TriggerCaseResult[] = [];
         let executionResults: ExecutionCaseResult[] = [];
 
         if ((mode === "trigger" || mode === "all") && evalDef.triggerCases.length > 0) {
-            triggerResults = await runTriggerCases(evalDef, projectCwd, onProgress);
+            triggerResults = runTriggerCases(evalDef, skillCategories, onProgress);
         }
 
         if ((mode === "execution" || mode === "all") && evalDef.executionCases.length > 0) {
-            executionResults = await runExecutionCases(evalDef, projectCwd, onProgress);
+            executionResults = runExecutionCases(evalDef, onProgress);
         }
 
         const triggerPassRate =
