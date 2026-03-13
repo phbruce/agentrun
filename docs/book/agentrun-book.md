@@ -148,8 +148,8 @@ flowchart TB
     end
 
     subgraph CORE["CORE RUNTIME (inner ring)"]
-        CmdLambda["Command Lambda"]
-        ProcLambda["Process Lambda"]
+        CmdLambda["Command Handler"]
+        ProcLambda["Process Handler"]
         MCPServer["MCP Server"]
         AgentSDK["Agent SDK"]
     end
@@ -177,7 +177,7 @@ The runtime is the immutable core of the platform. It includes:
 - *Process Handler*: consumes the queue, loads manifests, executes tools, and returns responses.
 - *MCP Server*: exposes tools as JSON-RPC endpoints for MCP clients (Claude Code, IDEs).
 - *Catalog Loader*: discovers and validates YAML manifests at initialization time.
-- *Session Store*: persists conversation history per thread (DynamoDB, configurable TTL).
+- *Session Store*: persists conversation history per thread (session store with configurable TTL; AWS implementation: DynamoDB).
 
 Changes to the runtime require a full deploy (CI/CD with tests, PR approval, apply via GitOps).
 
@@ -233,7 +233,7 @@ flowchart TB
         CmdH["Command Handler"]
         ProcH["Process Handler"]
         MCP["MCP Server"]
-        Session["Session Store (DynamoDB)"]
+        Session["Session Store"]
     end
 
     SlackAdp --> C2
@@ -279,7 +279,7 @@ Decision rights define who approves; change management defines how approval happ
 
 ### 1.4.1 Flow 1: GitOps for Infrastructure (Core Runtime)
 
-Runtime changes (Lambdas, IAM, queues, DynamoDB tables) follow the standard GitOps flow:
+Runtime changes (handlers, IAM, message queues, session stores) follow the standard GitOps flow:
 
 ```text
 Developer -> PR -> Atlantis Plan -> Review -> Atlantis Apply -> Merge
@@ -292,22 +292,22 @@ Characteristics:
 - *Automerge* after Apply: configurable via `automerge: true` in `atlantis.yaml`.
 - Lock per project: Atlantis locks the *state file* during plan/apply, preventing conflicts.
 
-### 1.4.2 Flow 2: S3 Sync for Manifests (Consumer Packs)
+### 1.4.2 Flow 2: Manifest Sync (Consumer Packs)
 
-Consumer pack manifests are synchronized via S3, without the need for redeploy:
+Consumer pack manifests are synchronized via the manifest store (currently S3), without the need for redeploy:
 
 ```text
-Developer -> PR (manifest YAML) -> Review -> Merge -> CI Sync -> S3 Bucket -> Lambda Cold Start
+Developer -> PR (manifest YAML) -> Review -> Merge -> CI Sync -> Manifest Store -> Handler Cold Start
 ```
 
 Characteristics:
 
-- No *downtime*: new manifests are loaded on the next Lambda *cold start*.
-- Versioning: the S3 bucket has versioning enabled for *rollback*.
+- No *downtime*: new manifests are loaded on the next handler *cold start*.
+- Versioning: the manifest store has versioning enabled for *rollback*.
 - Pre-merge validation: CI runs *schema validation* before merge.
-- Core vs Consumer: `core` pack manifests are bundled in the deploy; consumer packs are loaded from S3.
+- Core vs Consumer: `core` pack manifests are bundled in the deploy; consumer packs are loaded from the manifest store.
 
-Figure 1.3 -- Comparison of GitOps and S3 Sync flows.
+Figure 1.3 -- Comparison of GitOps and Manifest Sync flows.
 
 ```mermaid
 flowchart TB
@@ -317,17 +317,17 @@ flowchart TB
         Review1["Review"]
         Apply["Atlantis Apply"]
         Merge1["Merge"]
-        Deploy["Deploy (Lambda)"]
+        Deploy["Deploy (Handler)"]
 
         PR1 --> Plan --> Review1 --> Apply --> Merge1 --> Deploy
     end
 
-    subgraph F2["FLOW 2: S3 Sync (Manifests)"]
+    subgraph F2["FLOW 2: Manifest Sync (Manifests)"]
         PR2["PR (YAML)"]
         Validate["CI Validate (Zod)"]
         Review2["Review"]
         Merge2["Merge"]
-        Sync["CI Sync -> S3"]
+        Sync["CI Sync -> Manifest Store"]
         Cold["Cold Start Reload"]
 
         PR2 --> Validate --> Review2 --> Merge2 --> Sync --> Cold
@@ -336,11 +336,11 @@ flowchart TB
 
 ### 1.4.3 Comparison Table
 
-| Aspect | GitOps (Runtime) | S3 Sync (Manifests) |
+| Aspect | GitOps (Runtime) | Manifest Sync (Manifests) |
 |--------|-----------------|---------------------|
 | Frequency | Weekly/Monthly | Daily |
 | Risk | High (infra) | Low (behavior) |
-| Rollback | `tofu plan` + previous apply | S3 version restore |
+| Rollback | `tofu plan` + previous apply | Manifest store version restore |
 | Approvers | Platform + Tech Lead | Tech Lead |
 | Time to effect | ~5 min (deploy) | Next cold start |
 
@@ -408,7 +408,7 @@ When a user interacts with AgentRun, the identity goes through a resolution chai
 | Step | Description |
 |------|-------------|
 | 1. Identification | Channel identifies native user (Slack User ID, GitHub OAuth, API Key) |
-| 2. IdentitySource | Channel Adapter normalizes: `slack` -> GitHub username, `github` -> direct, `apikey` -> DynamoDB lookup |
+| 2. IdentitySource | Channel Adapter normalizes: `slack` -> GitHub username, `github` -> direct, `apikey` -> session store lookup |
 | 3. Role Resolution | Orchestrator maps username -> role |
 | 4. Authorization | Role filters available use-cases, tools, and packs |
 
@@ -420,7 +420,7 @@ flowchart TB
     GitHub["GitHub OAuth"]
     APIKey["API Key"]
 
-    Resolver["Identity Resolver\n1. Slack ID --> static mapping\n2. GitHub token --> /user API\n3. API Key --> DynamoDB lookup"]
+    Resolver["Identity Resolver\n1. Slack ID --> static mapping\n2. GitHub token --> /user API\n3. API Key --> session store lookup"]
 
     Identity["username, role,\nallowedPacks"]
 
@@ -439,7 +439,7 @@ Packs extend AgentRun's capabilities in a controlled manner. Each pack declares:
 
 - `inherits`: which packs it inherits tools and workflows from (e.g., `core`).
 - `allowedRoles`: which roles can use the pack's manifests.
-- `secrets`: which secrets the pack needs (isolated per pack in Secrets Manager).
+- `secrets`: which secrets the pack needs (isolated per pack in the secret store).
 
 ```yaml
 apiVersion: agentrun/v1
@@ -521,10 +521,9 @@ AgentRun implements hooks at two points in the lifecycle of each tool call:
 | `preToolUse` | Before execution | `toolName`, `args`, `userId`, `role`, `sessionId`, `timestamp` |
 | `postToolUse` | After execution | All from pre + `duration`, `statusCode`, `resultSize`, `error?` |
 
-### 1.7.2 Structured CloudWatch Logs
+### 1.7.2 Structured Logs
 
-All logs follow a structured JSON format to facilitate queries in CloudWatch
-Logs Insights:
+All logs follow a structured JSON format to facilitate queries in the logging backend (currently CloudWatch Logs Insights):
 
 ```json
 {
@@ -540,7 +539,7 @@ Logs Insights:
 }
 ```
 
-### 1.7.3 Useful Queries (CloudWatch Logs Insights)
+### 1.7.3 Useful Queries (Example: CloudWatch Logs Insights)
 
 ```sql
 -- Top 10 most used tools in the last 24h
@@ -554,7 +553,7 @@ fields userId, toolName | filter hook = "postToolUse" and statusCode >= 400
 
 ### 1.7.4 Usage Tracking
 
-In addition to hooks, AgentRun persists usage metrics in a dedicated DynamoDB table:
+In addition to hooks, AgentRun persists usage metrics in a dedicated usage store (currently DynamoDB):
 
 | Field | Description |
 |-------|-------------|
@@ -575,8 +574,8 @@ flowchart TB
     Pre["preToolUse"]
     LogPre["LOG: tool, role,\ndecision (allow/block)"]
     Post["postToolUse"]
-    CW["CloudWatch Logs\n- Ad-hoc queries\n- Logs Insights\n- Alerts"]
-    DDB["DynamoDB Usage Table\n- toolCounts per day\n- skillCounts\n- totalInvocations\n- totalDuration"]
+    CW["Log Store\n- Ad-hoc queries\n- Log analytics\n- Alerts"]
+    DDB["Usage Store\n- toolCounts per day\n- skillCounts\n- totalInvocations\n- totalDuration"]
 
     Exec -->|emits events| Pre
     Pre --> LogPre
@@ -652,7 +651,7 @@ Packs support inheritance via `inherits`. The graph must be a **DAG** (*Directed
 ### 1.8.4 Secret Isolation
 
 Each pack declares secrets in `pack.yaml` (`spec.secrets`). Secrets are stored
-with a prefix in Secrets Manager (`agentrun/packs/{pack-name}/SECRET_NAME`). The runtime only
+with a prefix in the secret store (`agentrun/packs/{pack-name}/SECRET_NAME`). The runtime only
 injects secrets from the pack that the skill/workflow belongs to, preventing cross-access.
 
 ---
@@ -854,7 +853,7 @@ An atomic **tool**, a **workflow** that composes it, a **use-case** for NLU, and
 | 1.1 | AgentRun is an IDP with a Platform-as-a-Product model |
 | 1.2 | Three layers: Core Runtime, Consumer Manifests, Interface |
 | 1.3 | Decision rights by artifact type, principle of least authority |
-| 1.4 | Two flows: GitOps for runtime, S3 sync for manifests |
+| 1.4 | Two flows: GitOps for runtime, manifest sync for manifests |
 | 1.5 | RBAC with extensible roles (PlatformConfig), identity chain, extension via packs |
 | 1.6 | Domain-scoped MCP servers for token savings |
 | 1.7 | Pre/post tool hooks, structured JSON logs, usage metrics |
@@ -902,7 +901,7 @@ graph LR
     S["Slack Webhook"] -->|vector| S1["Forged payload"]
     S -->|vector| S2["Command abuse"]
 
-    S3["S3 Manifests"] -->|vector| S3a["Manifest poisoning"]
+    S3["Manifest Store"] -->|vector| S3a["Manifest poisoning"]
     S3 -->|vector| S3b["YAML inject"]
 
     P["Prompt / LLM"] -->|vector| P1["Tool injection via prompt"]
@@ -919,15 +918,15 @@ graph LR
 if stored in plain text; tampered binary via compromised *pipeline*;
 *MITM* on requests to the endpoint.
 
-**MCP Endpoint** -- Lambda JSON-RPC via HTTPS. Risks: stolen GitHub token
+**MCP Endpoint** -- JSON-RPC handler via HTTPS. Risks: stolen GitHub token
 grants access to all tools for that role; *replay* of intercepted requests;
 *tool injection* via manipulated payload.
 
-**Slack Webhook** -- Command Lambda. Risks: forged payload without signature
+**Slack Webhook** -- Command Handler. Risks: forged payload without signature
 validation; *rate* abuse via rapid command sequences.
 
-**S3 Manifests** -- YAML that defines tools per skill. An attacker with write
-access to the bucket could add dangerous tools, create skills that expose
+**Manifest Store** -- YAML that defines tools per skill. An attacker with write
+access to the store could add dangerous tools, create skills that expose
 sensitive data, or inject malicious prompts.
 
 **Prompt Injection** -- the user may ask the agent to ignore restrictions,
@@ -1013,17 +1012,17 @@ if statusCode == 401 || statusCode == 403 {
 
 ### 2.2.3 Slack Identity (StaticIdentityProvider)
 
-For Slack, the identity comes from the Slack user ID in the payload. The Command Lambda
+For Slack, the identity comes from the Slack user ID in the payload. The Command Handler
 validates HMAC-SHA256 (`X-Slack-Signature`) and rejects timestamps older than 5
 minutes (*replay protection*).
 
 ### 2.2.4 Identity Resolution in the MCP Server
 
 The MCP server receives `Authorization: Bearer <token>`, validates against GitHub
-`/user`, and maps the login to a role via DynamoDB:
+`/user`, and maps the login to a role via the user registry:
 
 ```text
-Token -> GitHub /user -> { login: "dev-user" } -> DynamoDB -> role: "developer"
+Token -> GitHub /user -> { login: "dev-user" } -> User Registry -> role: "developer"
 ```
 
 ---
@@ -1101,7 +1100,7 @@ This reduces the attack surface and LLM context window consumption.
 
 AgentRun abstracts credential retrieval via the `CredentialProvider` interface. Each role maps to dedicated credentials -- the concrete form depends on the provider configured in `PlatformConfig`.
 
-In the AWS implementation (`StsCredentialProvider`), each role maps to an IAM role via `roleArnPattern` with `{{ role }}` interpolation. The Process Lambda performs `STS AssumeRole` per request, obtaining temporary credentials (15 min TTL):
+In the AWS implementation (`StsCredentialProvider`), each role maps to an IAM role via `roleArnPattern` with `{{ role }}` interpolation. The Process Handler performs `STS AssumeRole` per request, obtaining temporary credentials (15 min TTL):
 
 ```text
 PlatformConfig.providers.credentials:
@@ -1109,7 +1108,7 @@ PlatformConfig.providers.credentials:
   config:
     roleArnPattern: "arn:aws:iam::123456789012:role/agentrun-role-{{ role }}"
 
-Process Lambda --> CredentialProvider.getCredentials("developer")
+Process Handler --> CredentialProvider.getCredentials("developer")
               --> STS AssumeRole --> IAM Role agentrun-role-developer
                                      v
                                 AccessKeyId + SecretAccessKey + SessionToken
@@ -1161,12 +1160,12 @@ The user's identity carries `credentials: unknown` (opaque type). The platform c
 | No writes | No policy includes `Put*`, `Create*`, `Delete*`, `Update*` |
 | Resource scoping | Log groups restricted to the application prefix |
 | Session duration | STS credentials with 15-minute TTL |
-| No cross-role | Trust policy limits `AssumeRole` to the Process Lambda ARN |
+| No cross-role | Trust policy limits `AssumeRole` to the Process Handler ARN |
 | Condition keys | `aws:SourceAccount` + `aws:PrincipalTag/agentrun-role` |
 
 ### 2.4.4 Escalation Prevention
 
-The Process Lambda can only assume roles with the `agentrun-*` prefix:
+The Process Handler can only assume roles with the `agentrun-*` prefix:
 
 ```json
 {
@@ -1216,9 +1215,9 @@ If asked to write, explain that AgentRun is read-only.
 
 | Attribute | Value |
 |-----------|-------|
-| TTL | 7 days (automatic cleanup via DynamoDB) |
-| Encryption | DynamoDB encryption at rest (AWS managed key) |
-| Access | Only the Process Lambda |
+| TTL | 7 days (automatic cleanup via session store) |
+| Encryption | Encryption at rest (managed key) |
+| Access | Only the Process Handler |
 | Content | Message history (secrets redacted before storage) |
 
 ---
@@ -1354,18 +1353,18 @@ function validateWorkflow(workflow: WorkflowManifest, registeredTools: string[])
 
 ### 2.7.3 Secret Isolation by Pack
 
-Each pack has isolated secrets in SSM Parameter Store:
+Each pack has isolated secrets in the secret store (currently SSM Parameter Store):
 
 ```text
 /agentrun/packs/{pack-name}/secrets/{key}
 ```
 
 IAM policy restricts reads to the path of the executing pack. Secrets are
-cached for 15 minutes in the Lambda's memory.
+cached for 15 minutes in the handler's memory.
 
-### 2.7.4 S3 Sync Pipeline
+### 2.7.4 Manifest Sync Pipeline
 
-Manifests reach S3 only via merge to `main`:
+Manifests reach the manifest store only via merge to `main`:
 
 ```yaml
 on:
@@ -1401,7 +1400,7 @@ const BLOCKED_TOOL_PATTERNS = [
 
 ### 2.8.2 postToolUse: Auditing
 
-Every execution is recorded in CloudWatch:
+Every execution is recorded in the logging backend:
 
 ```json
 {
@@ -1428,6 +1427,10 @@ role matrix in section 2.3.1). Upon reaching the limit, all subsequent
 tool calls are blocked by `preToolUse`.
 
 ---
+
+### 2.8.5 AWS SDK Action Allowlist
+
+The declarative tool runtime enforces an allowlist of permitted AWS SDK actions. Only explicitly listed service/action combinations (e.g., `S3:ListBuckets`, `Lambda:GetFunction`, `EKS:DescribeCluster`) are allowed. Any aws-sdk tool manifest referencing an action not in the allowlist is rejected at validation time. The allowlist is defined in `@agentrun-ai/tools-aws` and can be extended per deployment via the `AGENTRUN_HTTP_ALLOWLIST` environment variable for HTTP endpoints and `AGENTRUN_LAMBDA_PREFIX` for Lambda invocations.
 
 ## 2.9 Defense in Depth
 
@@ -1490,19 +1493,19 @@ the attacker cannot re-authenticate without the second factor.
 
 ### 2.10.3 Manifest Signing
 
-Sign manifests with *cosign* or GPG before uploading to S3; verify
-signature in the Process Lambda before loading.
+Sign manifests with *cosign* or GPG before uploading to the manifest store; verify
+signature in the Process Handler before loading.
 
 ### 2.10.4 Rate Limiting
 
-API Gateway: 10 req/s, burst 20, quota 1000/day per API key.
-Slack Command Lambda: 10 req/min, 100 req/hour per user.
+HTTP gateway: 10 req/s, burst 20, quota 1000/day per API key.
+Slack Command Handler: 10 req/min, 100 req/hour per user.
 
 ### 2.10.5 Security Alerts
 
-CloudWatch alarms for: spikes of 401/403 (brute force); tools blocked
+Monitoring alarms for: spikes of 401/403 (brute force); tools blocked
 by `preToolUse` (prompt injection); sessions that hit budget (abuse);
-manifests modified outside the pipeline (direct S3 access).
+manifests modified outside the pipeline (direct store access).
 
 ### 2.10.6 Network Isolation
 
@@ -1526,10 +1529,10 @@ Internet -> API Gateway (WAF) -> Lambda (VPC) -> RDS / EKS / SQS
 [ ] No IAM policy with write actions
 [ ] Sensitive environment variables redacted
 [ ] Manifests validated with Zod schemas
-[ ] Secrets isolated by pack in SSM
-[ ] S3 sync pipeline only via main branch
+[ ] Secrets isolated by pack in secret store
+[ ] Manifest sync pipeline only via main branch
 [ ] Budget and turn limits per session
-[ ] Rate limiting on API Gateway
+[ ] Rate limiting on HTTP gateway
 [ ] MFA mandatory in GitHub organization
 [ ] Alarms for blocked tools and auth errors
 ```
@@ -1546,7 +1549,7 @@ layer is sufficient, but together they form a robust defense:
 3. IAM: per-role AWS roles with least privilege, no writes.
 4. Runtime: `preToolUse` *blocking* + `postToolUse` *audit* + *budget limits*.
 5. Data: secret redaction + *system prompt guardrails* + *session* TTL.
-6. *Supply chain*: SHA256 *self-update* + Zod *validation* + S3 *sync pipeline*.
+6. *Supply chain*: SHA256 *self-update* + Zod *validation* + manifest *sync pipeline*.
 
 Governance (Chapter 1) defined the rules; security (this chapter) implemented the protection mechanisms. The next step is to demonstrate that these mechanisms meet concrete regulatory requirements. Chapter 3 positions AgentRun against frameworks such as GDPR and SOC 2, mapping each technical control to a compliance requirement.
 
@@ -1583,13 +1586,13 @@ AgentRun is a *read-only* observability platform. It queries infrastructure but 
 
 | Data Category | Examples | Storage | Retention |
 |---------------|----------|---------|-----------|
-| User identity | Slack User ID, GitHub username, name | DynamoDB (user registry), logs | Indefinite (registry), 90 days (logs) |
-| Query text | "how is the infra?", "find lambda X" | DynamoDB (sessions) | 7 days (TTL) |
-| Bot responses | Service status, summarized logs, metrics | DynamoDB (sessions) | 7 days (TTL) |
-| Usage metrics | Tokens consumed, query count per month | DynamoDB (usage tracking) | Indefinite |
-| API keys | MCP server access keys | DynamoDB (api-keys) | Until revocation |
-| Pack secrets | Third-party API keys | AWS SSM Parameter Store | Until revocation |
-| Tool call logs | Tool called, parameters, timestamp, user, role | CloudWatch Logs | Configurable (default 90 days) |
+| User identity | Slack User ID, GitHub username, name | Session store (user registry), logs | Indefinite (registry), 90 days (logs) |
+| Query text | "how is the infra?", "find lambda X" | Session store | 7 days (TTL) |
+| Bot responses | Service status, summarized logs, metrics | Session store | 7 days (TTL) |
+| Usage metrics | Tokens consumed, query count per month | Usage store | Indefinite |
+| API keys | MCP server access keys | Key store | Until revocation |
+| Pack secrets | Third-party API keys | Secret store | Until revocation |
+| Tool call logs | Tool called, parameters, timestamp, user, role | Log store | Configurable (default 90 days) |
 
 ### 3.1.3 Personal Data Classification
 
@@ -1613,9 +1616,9 @@ Figure 3.1 -- Personal data flow in AgentRun.
 flowchart TB
     A["User"] -->|"Slack ID / GitHub username"| B["Identity Resolution"]
     B -->|"Maps to: name, role, packs"| C["Orchestrator"]
-    C -->|"Records: userId, query, sessionId"| D["DynamoDB Sessions\nTTL: 7 days\nContent: conversation history"]
-    C -->|"Records: userId, query, sessionId"| E["DynamoDB Usage\nRetention: indefinite\nContent: tokens, queryCount"]
-    C -->|"Records: userId, query, sessionId"| F["CloudWatch Logs\nRetention: 90 days\nContent: tool calls, parameters"]
+    C -->|"Records: userId, query, sessionId"| D["Session Store\nTTL: 7 days\nContent: conversation history"]
+    C -->|"Records: userId, query, sessionId"| E["Usage Store\nRetention: indefinite\nContent: tokens, queryCount"]
+    C -->|"Records: userId, query, sessionId"| F["Log Store\nRetention: 90 days\nContent: tool calls, parameters"]
 ```
 
 ---
@@ -1639,12 +1642,12 @@ The platform operates with four sensitivity levels, each with proportional contr
 
 | Component | Stored Data | Level | Encryption |
 |-----------|-------------|-------|------------|
-| DynamoDB Sessions | userId, query text, bot responses | Internal | At-rest (AWS managed key) |
-| DynamoDB Usage | userId, month, inputTokens, outputTokens, queryCount | Internal | At-rest (AWS managed key) |
-| DynamoDB API Keys | apiKey hash, userId, role, packs, created date | Critical | At-rest (AWS managed key) |
-| SSM Parameter Store | Pack secrets (third-party API keys) | Critical | At-rest (KMS), in-transit (TLS) |
-| CloudWatch Logs | Tool calls, parameters, RBAC decisions, errors | Confidential | At-rest (AWS managed key) |
-| S3 Manifests | Pack YAML (tools, workflows, use-cases, skills) | Public | At-rest (S3 SSE) |
+| Session Store | userId, query text, bot responses | Internal | At-rest (managed key) |
+| Usage Store | userId, month, inputTokens, outputTokens, queryCount | Internal | At-rest (managed key) |
+| Key Store | apiKey hash, userId, role, packs, created date | Critical | At-rest (managed key) |
+| Secret Store | Pack secrets (third-party API keys) | Critical | At-rest (KMS), in-transit (TLS) |
+| Log Store | Tool calls, parameters, RBAC decisions, errors | Confidential | At-rest (managed key) |
+| Manifest Store | Pack YAML (tools, workflows, use-cases, skills) | Public | At-rest (SSE) |
 | User Registry (code) | externalId -> name, role mapping | Internal | Git versioning, PR review |
 
 ### 3.2.3 Transient vs Persistent Data
@@ -1655,7 +1658,7 @@ The platform operates with four sensitivity levels, each with proportional contr
 | Transient | In-memory pack cache | 5 minutes (CACHE_TTL_MS: 300000) | Automatic eviction |
 | Transient | Resolved secret cache | 15 minutes | Automatic eviction |
 | Transient | GitHub installation tokens | 5 minutes | Automatic expiration |
-| Persistent with TTL | Conversation sessions | 7 days | DynamoDB TTL |
+| Persistent with TTL | Conversation sessions | 7 days | Session store TTL |
 | Persistent | Usage metrics | Indefinite | No automatic cleanup |
 | Persistent | API keys | Until revocation | Manual |
 
@@ -1696,7 +1699,7 @@ graph TD
         L2D["Validates role allowlist"]
         L2E["Restricts Jira writes to private channels"]
     end
-    subgraph L3["Layer 3: MCP Server - API Gateway"]
+    subgraph L3["Layer 3: MCP Server - HTTP Gateway"]
         L3A["Filters tools/list and tools/call by role + packs"]
         L3B["Rejects unauthorized calls with explicit error"]
     end
@@ -1780,9 +1783,9 @@ Auditing operates at four complementary points, ensuring that no significant ope
 |---------------|-----------|---------------|
 | PreToolUse Hook | Agent Runner | Tool, role, decision (allow/block), reason |
 | PostToolUse Hook | Agent Runner | Tool, timestamp, role, userId |
-| MCP Server Request | API Gateway Lambda | userId, role, source, packs, method |
-| MCP Tool Call | API Gateway Lambda | userId, tool name, call arguments |
-| Orchestrator Lifecycle | Command Lambda | userId, source, query, sessionId, skill, duration, tools used, errors |
+| MCP Server Request | MCP Server | userId, role, source, packs, method |
+| MCP Tool Call | MCP Server | userId, tool name, call arguments |
+| Orchestrator Lifecycle | Command Handler | userId, source, query, sessionId, skill, duration, tools used, errors |
 
 ### 3.4.3 Complete Traceability (5W)
 
@@ -1792,7 +1795,7 @@ For any operation, it is possible to answer the five fundamental audit questions
 |----------|-----------|--------|
 | **Who** | userId, role, source | Identity resolution + user registry |
 | **What** | tool, method, decision | preToolUse/postToolUse hooks |
-| **When** | timestamp, durationMs | CloudWatch timestamp + hook entries |
+| **When** | timestamp, durationMs | Log store timestamp + hook entries |
 | **Where** | sessionId, source (slack/github/apikey) | Orchestrator + MCP server |
 | **With what parameters** (How) | args, params.arguments | MCP server request logging |
 
@@ -1839,13 +1842,13 @@ sequenceDiagram
 
 | Data | Storage | Retention | Expiration Mechanism | Justification |
 |------|---------|-----------|---------------------|---------------|
-| Conversation sessions | DynamoDB | 7 days | DynamoDB native TTL | Data minimization; sessions lose relevance after resolution |
-| Usage metrics | DynamoDB | Indefinite | N/A (no TTL) | Needed for billing and trend analysis |
-| API keys | DynamoDB | Until revocation | Manual deletion | Lifecycle managed by platform team |
-| Pack secrets | SSM Parameter Store | Until revocation | Manual deletion | Lifecycle managed by platform team |
-| Tool call logs | CloudWatch Logs | Configurable (90 days default) | CloudWatch retention policy | Balance between auditing and cost |
-| Manifests (YAML) | S3 + Git | Indefinite (versioned) | Git versioning | Change history as audit requirement |
-| In-memory cache | Lambda runtime | 5-15 minutes | Automatic eviction | Transient data without persistence |
+| Conversation sessions | Session store | 7 days | Native TTL | Data minimization; sessions lose relevance after resolution |
+| Usage metrics | Usage store | Indefinite | N/A (no TTL) | Needed for billing and trend analysis |
+| API keys | Key store | Until revocation | Manual deletion | Lifecycle managed by platform team |
+| Pack secrets | Secret store | Until revocation | Manual deletion | Lifecycle managed by platform team |
+| Tool call logs | Log store | Configurable (90 days default) | Log retention policy | Balance between auditing and cost |
+| Manifests (YAML) | Manifest store + Git | Indefinite (versioned) | Git versioning | Change history as audit requirement |
+| In-memory cache | Handler runtime | 5-15 minutes | Automatic eviction | Transient data without persistence |
 
 ### 3.5.2 Right to Erasure
 
@@ -1854,16 +1857,16 @@ GDPR (Art. 17) and similar regulations guarantee the data subject the right to r
 | Personal Data | Location | Deletion Process | Status |
 |---------------|----------|-----------------|--------|
 | Slack User ID / name | User registry (source code) | Remove entry from registry + deploy | Implemented |
-| Sessions with query text | DynamoDB Sessions | TTL expires in 7 days; early deletion via `DeleteItem` | Partially implemented |
-| Linked usage metrics | DynamoDB Usage | `DeleteItem` with key (userId, month) | Requires manual process |
-| Logs with userId | CloudWatch Logs | No native API for selective deletion | Gap identified |
+| Sessions with query text | Session store | TTL expires in 7 days; early deletion via `DeleteItem` | Partially implemented |
+| Linked usage metrics | Usage store | `DeleteItem` with key (userId, month) | Requires manual process |
+| Logs with userId | Log store | No native API for selective deletion | Gap identified |
 | GitHub username | User registry + logs | Remove from registry + wait for log expiration | Partially implemented |
 
 ### 3.5.3 Retention Recommendations
 
 1. **Define TTL for usage metrics**: Currently indefinite. Recommended TTL of 12 months aligned with the fiscal cycle.
-2. **Implement deletion API**: Endpoint that receives userId and removes data from DynamoDB Sessions + Usage.
-3. **Log redaction**: Replace userId with irreversible hash in CloudWatch Logs after the active audit period.
+2. **Implement deletion API**: Endpoint that receives userId and removes data from Session Store + Usage Store.
+3. **Log redaction**: Replace userId with irreversible hash in the log store after the active audit period.
 4. **Document retention justification**: Each data type should have a formal justification linked to the legal basis.
 
 ---
@@ -1910,10 +1913,10 @@ Automatic validation:
 Review + merge (platform team approval)
     |
     v
-CI sync to S3 -> Cache updated in 5 minutes
+CI sync to manifest store -> Cache updated in 5 minutes
 ```
 
-**Flow 3 -- Core Changes (Lambda deploy)**:
+**Flow 3 -- Core Changes (handler deploy)**:
 
 ```
 Source code change
@@ -1922,7 +1925,7 @@ Source code change
 CI: build + type check + hash comparison
     |
     v
-Upload changed artifacts to S3
+Upload changed artifacts to artifact store
     |
     v
 Autoplan detects change -> Apply per function (isolated blast radius)
@@ -2005,10 +2008,10 @@ Preventive controls block known threats. Detective controls identify threats tha
 | ID | Control | Component | Description |
 |----|---------|-----------|-------------|
 | D-01 | postToolUse logging | Agent Runner | Records every tool execution with userId, role, timestamp |
-| D-02 | Usage tracking | DynamoDB Usage | Accumulates tokens and queries per user per month |
-| D-03 | Session history | DynamoDB Sessions | Complete interaction history per session (7 days) |
-| D-04 | MCP request logging | MCP Server Lambda | Log of every request with identity, tool, and arguments |
-| D-05 | Orchestrator lifecycle | Command Lambda | Log of complete cycle: query received -> model selected -> execution -> result |
+| D-02 | Usage tracking | Usage Store | Accumulates tokens and queries per user per month |
+| D-03 | Session history | Session Store | Complete interaction history per session (7 days) |
+| D-04 | MCP request logging | MCP Server | Log of every request with identity, tool, and arguments |
+| D-05 | Orchestrator lifecycle | Command Handler | Log of complete cycle: query received -> model selected -> execution -> result |
 | D-06 | Block event logging | preToolUse | Records blocked attempts with reason (dangerous_tool, role_restriction, namespace_violation) |
 | D-07 | Identity resolution logging | GitHubTokenProvider | Records identity resolution (derived teams, assigned role) |
 
@@ -2018,11 +2021,11 @@ Data collected by detective controls enables identification of anomalous pattern
 
 | Indicator | Data Source | Suggested Threshold | Action |
 |-----------|-------------|---------------------|--------|
-| Excessive query volume | DynamoDB Usage (queryCount) | > 100 queries/day for non-platform roles | Alert platform team |
-| Anomalous token consumption | DynamoDB Usage (inputTokens + outputTokens) | > 3x role average | Investigate complex queries |
-| Repeated blocked access attempts | CloudWatch Logs (preToolUse blocks) | > 5 blocks/hour for same userId | Review need for role upgrade |
-| Atypical long sessions | DynamoDB Sessions (turn count) | Session with > maxTurns attempts | Check if agent is in a loop |
-| Off-hours access | CloudWatch Logs (timestamp) | Queries between 00:00-06:00 local time | Security alert |
+| Excessive query volume | Usage Store (queryCount) | > 100 queries/day for non-platform roles | Alert platform team |
+| Anomalous token consumption | Usage Store (inputTokens + outputTokens) | > 3x role average | Investigate complex queries |
+| Repeated blocked access attempts | Log Store (preToolUse blocks) | > 5 blocks/hour for same userId | Review need for role upgrade |
+| Atypical long sessions | Session Store (turn count) | Session with > maxTurns attempts | Check if agent is in a loop |
+| Off-hours access | Log Store (timestamp) | Queries between 00:00-06:00 local time | Security alert |
 
 ### 3.8.3 Current Limitations
 
@@ -2056,7 +2059,7 @@ AgentRun's detective controls are passive: they record data but do not generate 
 | CC3.1 | Risk identification | Data classification, gap analysis | 3.2, 3.10 |
 | CC5.1 | Control activities | Preventive and detective controls | 3.7, 3.8 |
 | CC6.1 | Logical access security | preToolUse blocking, allowedTools | P-01, P-04 |
-| CC6.2 | Access credentials | API keys in DynamoDB, IAM roles, GitHub tokens | P-11 |
+| CC6.2 | Access credentials | API keys in key store, IAM roles, GitHub tokens | P-11 |
 | CC6.3 | Role-based access | Extensible roles with declarative permission matrix | 3.3.1 |
 | CC6.6 | System boundaries | Scope-based tool visibility (aws/github/jira) | P-04 |
 | CC7.1 | Anomaly detection | Usage tracking, block logging | D-02, D-06 |
@@ -2100,13 +2103,13 @@ AgentRun's detective controls are passive: they record data but do not generate 
 | # | Gap | Impact | Affected Frameworks | Priority | Estimated Effort |
 |---|-----|--------|---------------------|----------|-----------------|
 | G-01 | No DSAR (Data Subject Access Request) automation | Manual handling of data subject requests | GDPR Art. 15-20 | High | Medium |
-| G-02 | No formal data deletion API | Deletion requires direct DynamoDB access | GDPR Art. 17 | High | Low |
+| G-02 | No formal data deletion API | Deletion requires direct store access | GDPR Art. 17 | High | Low |
 | G-03 | No SIEM integration | Anomaly detection depends on manual queries | SOC 2 CC7.1 | Medium | Medium |
 | G-04 | No consent management | Legal basis assumed (legitimate interest) without record | GDPR Art. 6-7 | Medium | Medium |
 | G-05 | Usage metrics without TTL | Usage data accumulates indefinitely | GDPR Art. 5(1)(c) (minimization) | Medium | Low |
-| G-06 | CloudWatch Logs without selective deletion | Cannot delete logs for a specific user | GDPR Art. 17 | Medium | High |
+| G-06 | Log store without selective deletion | Cannot delete logs for a specific user | GDPR Art. 17 | Medium | High |
 | G-07 | Hardcoded user registry | Role changes require deploy | SOC 2 CC6.2 | Low | Medium |
-| G-08 | No client-side encryption | DynamoDB data uses only AWS managed keys | SOC 2 C1.1 | Low | Medium |
+| G-08 | No client-side encryption | Store data uses only provider-managed keys | SOC 2 C1.1 | Low | Medium |
 | G-09 | No automated DPIA report | Impact assessment is a manual process | GDPR Art. 35 | Low | High |
 | G-10 | No automatic anomaly alerts | Indicators identified but without automation | SOC 2 CC7.1 | Medium | Medium |
 
@@ -2117,17 +2120,17 @@ AgentRun's detective controls are passive: they record data but do not generate 
 | Gap | Action | Expected Result |
 |-----|--------|-----------------|
 | G-02 | Create endpoint `/admin/delete-user-data` that removes data from Sessions + Usage by userId | Deletion in a single request |
-| G-05 | Add 365-day TTL to DynamoDB Usage table | Data expires after 1 year |
-| G-10 | Create CloudWatch Metric Filter for blocks by userId + CloudWatch Alarm | Automatic alert via email/Slack |
+| G-05 | Add 365-day TTL to usage store | Data expires after 1 year |
+| G-10 | Create metric filter for blocks by userId + monitoring alarm | Automatic alert via email/Slack |
 
 **Phase 2 -- Structural Improvements (2-4 sprints)**:
 
 | Gap | Action | Expected Result |
 |-----|--------|-----------------|
 | G-01 | Implement DSAR flow: endpoint that exports all data for a userId in JSON format | Automated request handling |
-| G-03 | Export structured logs to SIEM (via CloudWatch Subscription Filter) | Real-time anomaly detection |
+| G-03 | Export structured logs to SIEM (via log subscription filter) | Real-time anomaly detection |
 | G-04 | Legal basis record per user on first interaction (consent banner in Slack) | Legal basis evidence |
-| G-07 | Migrate user registry to DynamoDB with administrative interface | Changes without deploy |
+| G-07 | Migrate user registry to a data store with administrative interface | Changes without deploy |
 
 **Phase 3 -- Maturity (4+ sprints)**:
 
@@ -2205,11 +2208,10 @@ Figure 4.1 -- AgentRun component architecture.
 graph TB
     subgraph Channels["Channels Layer"]
         SA[SlackAdapter]
-        CA[CLIAdapter]
         MCP[MCP Server - HTTP]
         SA --> CC[ChannelContext - DTO]
-        CA --> CC
         MCP --> CC
+        %% CLI access is via MCP channel (Claude Code connects via MCP Server)
     end
 
     subgraph Orch["Orchestrator"]
@@ -2234,6 +2236,9 @@ graph TB
         PR --> MANIF_I["ManifestStore"]
         PR --> QUEUE_I["QueueProvider"]
         PR --> SECRET_I["BootstrapSecretProvider"]
+        PR -.-> EMB_I["EmbeddingProvider (optional)"]
+        PR -.-> VS_I["VectorStore (optional)"]
+        PR -.-> DI_I["DocumentIngester (optional)"]
     end
 
     subgraph PlatformAWS["Platform AWS Implementations"]
@@ -2285,8 +2290,9 @@ swapping implementations without lateral impact.
 
 **Platform Abstraction Layer.** Introduced to decouple AgentRun's core from
 concrete cloud and service implementations. The `PlatformRegistry` (singleton) stores
-and serves instances of 7 provider interfaces: `LlmProvider`, `CredentialProvider`,
-`SessionStore`, `UsageStore`, `ManifestStore`, `QueueProvider`, and `BootstrapSecretProvider`.
+and serves instances of 10 provider interfaces: `LlmProvider`, `CredentialProvider`,
+`SessionStore`, `UsageStore`, `ManifestStore`, `QueueProvider`, `BootstrapSecretProvider`,
+and three optional RAG-specific providers: `EmbeddingProvider`, `VectorStore`, and `KnowledgeBaseProvider`.
 The `PlatformConfig` (YAML validated with Zod) defines which implementation to use for each provider
 and contains all role, user, resource, and environment configuration.
 
@@ -2396,35 +2402,31 @@ which execution mechanism will be used.
 
 ### 4.2.3 Chain of Responsibility -- Identity Resolution
 
-The user's identity is resolved by a chain of *providers*. Each link tries to resolve;
-if it cannot, it passes to the next.
+The user's identity is resolved through a provider with internal chain logic. A single `IdentityProvider` is set via `setIdentityProvider()`, and the provider internally follows a resolution strategy: check the static registry first, then derive from external sources (e.g., GitHub teams), with a readonly fallback.
 
 ```typescript
-class IdentityChain implements IdentityProvider {
-  constructor(private providers: IdentityProvider[]) {}
-
+// Single provider with internal chain logic
+class GitHubTokenProvider implements IdentityProvider {
   async resolve(ctx: ChannelContext): Promise<Identity> {
-    for (const provider of this.providers) {
-      const identity = await provider.resolve(ctx);
-      if (identity) return identity;
-    }
-    return this.fallback(ctx);
-  }
+    // 1. Check static registry (fast, zero external I/O)
+    const static = this.registry.lookup(ctx.userId);
+    if (static) return static;
 
-  private fallback(ctx: ChannelContext): Identity {
-    return { userId: ctx.userId, role: "readonly", source: "fallback" };
+    // 2. Derive from GitHub teams → map to role
+    const teams = await this.github.getTeams(ctx.token);
+    const role = this.mapTeamsToRole(teams);
+    if (role) return { userId: ctx.userId, role, source: "github" };
+
+    // 3. Fallback: readonly role
+    return { userId: ctx.userId, role: "viewer", source: "fallback" };
   }
 }
 
-// Configuration:
-// 1. StaticRegistry -> searches userId in table (fast, zero external I/O)
-// 2. GitHubTeamDerivation -> queries GitHub teams, maps to role
-// 3. Fallback -> readonly role
-const chain = new IdentityChain([
-  new StaticRegistryProvider(config),
-  new GitHubTeamDerivationProvider(githubClient),
-]);
+// Registration (single provider, not a chain of providers)
+setIdentityProvider(new GitHubTokenProvider(config, githubClient));
 ```
+
+> **Implementation note**: Rather than a formal Chain of Responsibility with multiple chained provider objects, the implementation uses a single provider with internal resolution steps. This simplifies configuration while preserving the sequential-fallback semantics of the pattern.
 
 ### 4.2.4 Observer -- `preToolUse` / `postToolUse` Hooks
 
@@ -2432,129 +2434,80 @@ The hooks form an observer system that intercepts tool execution
 without coupling security or auditing logic to the core.
 
 ```typescript
-type HookPhase = "preToolUse" | "postToolUse";
-
-interface Hook {
-  phase: HookPhase;
-  execute(context: HookContext): Promise<HookResult>;
+// Pre-tool-use hook: RBAC gate that blocks unauthorized tool calls
+function createPreToolUseHook(allowedTools: string[]) {
+  return async (input: any) => {
+    if (!allowedTools.includes(input.tool_name)) {
+      input.blocked = true;
+      input.reason = `Tool ${input.tool_name} not allowed for this role`;
+    }
+    return input;
+  };
 }
 
-interface HookContext {
-  toolName: string;
-  arguments: Record<string, unknown>;
-  identity: Identity;
-  session: Session;
+// Post-tool-use hook: tracks which tools were invoked
+function createPostToolUseHook(toolsUsed: string[]) {
+  return async (input: any) => {
+    toolsUsed.push(input.tool_name);
+    return input;
+  };
 }
 
-interface HookResult {
-  allow: boolean;   // preToolUse: if false, blocks the call
-  reason?: string;  // message for the user
-  metadata?: Record<string, unknown>; // data for audit trail
-}
-
-// Security gate: checks if the role allows the tool
-class RBACHook implements Hook {
-  phase = "preToolUse" as const;
-
-  async execute(ctx: HookContext): Promise<HookResult> {
-    const allowed = this.rbac.isToolAllowed(ctx.identity.role, ctx.toolName);
-    return {
-      allow: allowed,
-      reason: allowed ? undefined : `Tool ${ctx.toolName} not allowed for role ${ctx.identity.role}`,
-    };
-  }
-}
-
-// Audit hook: records every execution for compliance
-class AuditHook implements Hook {
-  phase = "postToolUse" as const;
-
-  async execute(ctx: HookContext): Promise<HookResult> {
-    await this.logger.log({
-      tool: ctx.toolName,
-      user: ctx.identity.userId,
-      timestamp: Date.now(),
-      args: ctx.arguments,
-    });
-    return { allow: true };
-  }
-}
+// Registration: hooks are passed to the Agent SDK as callbacks
+const hooks = {
+  preToolUse: createPreToolUseHook(allowedTools),
+  postToolUse: createPostToolUseHook(toolsUsed),
+};
 ```
+
+> **Implementation note**: The hooks use closure-based factories rather than formal Observer classes, leveraging JavaScript's functional nature. The `preToolUse` hook mutates `input.blocked` to prevent execution; the `postToolUse` hook records usage for auditing. Both are passed as callbacks to the Agent SDK.
 
 ### 4.2.5 Template Method -- Orchestrator Flow
 
-The Orchestrator defines a fixed flow in four steps. Subclasses or injected strategies can customize each step without altering the overall structure.
+The Orchestrator defines a fixed flow in four steps. The conceptual structure follows the Template Method pattern, though the implementation uses a standalone `processRequest()` function rather than a class hierarchy.
 
 ```typescript
-class Orchestrator {
-  async handle(ctx: ChannelContext): Promise<void> {
-    // 1. Classify: which use-case does the message match?
-    const useCase = await this.classify(ctx);
+// Conceptual flow (actual implementation is function-based)
+async function processRequest(ctx: ChannelContext): Promise<void> {
+  // 1. Classify: which category does the message match?
+  const category = classifyQuery(ctx.text); // see section 4.14.1
 
-    // 2. Select: which executor to use (Agent vs Direct)?
-    const executor = this.selectExecutor(useCase);
+  // 2. Select: greeting shortcircuit, skill match, or general query
+  if (category === "greeting") return deliverGreeting(ctx);
+  const skill = parseSkillCommand(ctx.text);
+  if (skill) return processSkill(skill, ctx);
 
-    // 3. Execute: run tools, generate response
-    const result = await executor.execute(useCase, ctx);
+  // 3. Execute: run tools via Agent Runner (full agentic loop)
+  const result = await processInfraQuery(ctx);
 
-    // 4. Deliver: send response through the originating channel
-    await this.deliver(ctx, result);
-  }
-
-  private classify(ctx: ChannelContext): UseCase {
-    // Pure keyword matching via classifyQuery() (see section 4.14.1)
-    // Returns a ResponseCategory used to select the matching skill
-    const category = classifyQuery(ctx.text);
-    return this.catalog.matchUseCase(category);
-  }
-
-  private selectExecutor(useCase: UseCase): Executor {
-    // Skills with mode=direct use DirectExecutor (fast, cheap)
-    // Complex queries use AgentRunner (full agentic loop)
-    if (useCase.skill?.mode === "direct") {
-      return this.directExecutor;
-    }
-    return this.agentRunner;
-  }
+  // 4. Deliver: send response through the originating channel
+  await deliver(ctx, result);
 }
 ```
+
+> **Implementation note**: The actual orchestrator has three code paths (greeting shortcircuit, skill command match, general agent query) rather than the four discrete steps shown above. The `classifyQuery()` function (section 4.14.1) handles greeting detection; skill commands are matched by prefix pattern; general queries go through the full Agent Runner.
 
 ### 4.2.6 Decorator -- Scope Filtering over Role-Based Filtering
 
-The tool filter applies two decorative layers: first RBAC filters by role, then scope filters by domain. The MCP client receives only the tools that their role allows and that belong to the requested scope.
+The tool filter applies two layers: first RBAC filters by role, then scope filters by domain. The MCP client receives only the tools that their role allows and that belong to the requested scope.
 
 ```typescript
-interface ToolFilter {
-  filter(tools: Tool[]): Tool[];
+// Combined role + scope filtering in a single function
+function getMcpToolNamesForScope(
+  scope: string,
+  role: string,
+  catalog: Catalog
+): string[] {
+  // Layer 1: RBAC -- get tools allowed for this role
+  const roleTools = catalog.getMcpToolsForRole(role);
+
+  // Layer 2: Scope -- filter by domain (aws, github, jira)
+  if (!scope) return roleTools;
+  return roleTools.filter(t => t.scope === scope).map(t => t.name);
 }
-
-class RoleBasedFilter implements ToolFilter {
-  constructor(private identity: Identity, private rbac: RBAC) {}
-
-  filter(tools: Tool[]): Tool[] {
-    const allowed = this.rbac.getAllowedTools(this.identity.role);
-    return tools.filter(t => allowed.includes(t.name));
-  }
-}
-
-class ScopeFilter implements ToolFilter {
-  constructor(private scope: string, private inner: ToolFilter) {}
-
-  filter(tools: Tool[]): Tool[] {
-    // First applies the inner filter (RBAC)
-    const roleFiltered = this.inner.filter(tools);
-    // Then filters by scope (aws, github, jira)
-    if (!this.scope) return roleFiltered;
-    return roleFiltered.filter(t => t.scope === this.scope);
-  }
-}
-
-// Usage:
-const filter = new ScopeFilter("aws",
-  new RoleBasedFilter(identity, rbac)
-);
-const visibleTools = filter.filter(catalog.allTools());
 ```
+
+> **Implementation note**: The implementation combines both filtering layers in a single function rather than composable Decorator objects. The Decorator pattern is conceptually present (two sequential filters), but the functional approach avoids the overhead of creating wrapper objects for a two-step pipeline.
 
 ---
 
@@ -2804,7 +2757,7 @@ The choice of YAML as the configuration format brings three concrete benefits:
    is sufficient to map a new intent to a set of tools.
 
 2. **Deploys without build.** Changing a manifest does not require recompiling, repackaging, or
-   redeploying the Lambda. Simply update the file in the repository (for local packs)
+   redeploying the handler. Simply update the file in the repository (for local packs)
    or in S3 (for remote packs) and wait for cache invalidation.
 
 3. **Auditability.** Every behavior change is traceable via `git diff`.
@@ -3356,7 +3309,7 @@ flowchart TB
         S1["1. Reads tools from manifest"]
         S2["2. Calls each handler()"]
         S3["3. Collects results"]
-        S4["4. 1x Bedrock (summarize)"]
+        S4["4. 1x LLM (summarize)"]
         S1 --> S2
         S2 -->|"Direct handler calls,\nno intermediate LLM"| S3
         S3 --> S4
@@ -3611,6 +3564,17 @@ Each provider implements a core interface: `LlmProvider`,
 This allows OSS users to swap AWS implementations for alternatives
 (GCP, Azure, self-hosted) without modifying the core.
 
+> **Deployment examples**: The repository includes four examples demonstrating the platform's compute-agnostic design, each implementing the same `PlatformConfig` + `PlatformRegistry` pattern with different provider bindings:
+>
+> | Example | Compute | Queue | Session Store | Notes |
+> |---------|---------|-------|---------------|-------|
+> | `examples/aws-lambda/` | AWS Lambda + SAM | SQS | DynamoDB | Reference deployment with dedup table |
+> | `examples/standalone/` | Fastify server | In-memory | In-memory | Single-process, no queue (background tasks) |
+> | `examples/docker/` | Docker + Fastify | In-memory | PostgreSQL | docker-compose with graceful shutdown |
+> | `examples/gcp-cloud-functions/` | GCP Cloud Functions | Pub/Sub | Firestore (planned) | Demonstrates non-AWS compute |
+>
+> These examples validate the vendor-agnostic architecture in practice.
+
 ---
 
 ## 4.13 AgentRun CLI
@@ -3662,6 +3626,9 @@ agentrun pack publish <dir> --bucket <b>
 
 # Eval framework (see section 4.14)
 agentrun eval <dir> [--mode trigger|execution|all] [--filter <name>] [--json] [--threshold <0.0-1.0>]
+
+# Ingest documents into knowledge base (see section 5.11)
+agentrun ingest <dir> --source <path> [--cluster-arn <arn>] [--secret-arn <arn>] [--database <db>] [--schema <s>] [--embedding-model <m>] [--dimensions <n>] [--max-tokens <n>] [--overlap <n>] [--dry-run]
 ```
 
 Validation runs in two passes:
@@ -3773,6 +3740,7 @@ get_lambda_details          → lambda
 search_cloudwatch_logs      → logs
 list_sqs_queues             → sqs
 get_sqs_attributes          → sqs
+searchKnowledgeBase         → generic
 list_open_prs               → pull_requests
 get_pr_details              → pull_requests
 recent_commits              → pull_requests
@@ -3900,7 +3868,7 @@ AgentRun enables engineers to query the state of their infrastructure using natu
 AgentRun's architecture was designed around three principles:
 
 1. *Multi-client* by design: any interface (Slack, Claude Code, Discord, Microsoft Teams) shares the same tool layer and business logic.
-2. *Serverless-first*: all workloads run on Lambda functions, with no persistent servers to manage.
+2. *Stateless-handler-first*: all workloads are designed as stateless handlers. The reference deployment uses AWS Lambda, but the provider pattern supports alternative compute backends.
 3. Extensibility via manifests: new capabilities are added through declarative YAML files, without requiring code deployment.
 
 At a high level, the architecture is organized into four layers:
@@ -3916,12 +3884,12 @@ flowchart TB
     end
 
     subgraph INGESTION["INGESTION LAYER"]
-        CommandLambda["Command Lambda"]
-        MCPServer["MCP Server Lambda"]
+        CommandHandler["Command Handler"]
+        MCPServer["MCP Server"]
     end
 
     subgraph PROCESSING["PROCESSING LAYER"]
-        subgraph ProcessLambda["Process Lambda"]
+        subgraph ProcessHandler["Process Handler"]
             subgraph Orchestrator["Orchestrator"]
                 AgentRunner["Agent Runner"]
                 DirectExecutor["Direct Executor"]
@@ -3945,12 +3913,12 @@ flowchart TB
         Jira["Jira"]
     end
 
-    Slack --> CommandLambda
+    Slack --> CommandHandler
     ClaudeCode --> MCPServer
     Future --> MCPServer
-    CommandLambda -- "SQS" --> ProcessLambda
+    CommandHandler -- "Message Queue" --> ProcessHandler
     MCPServer -- "Synchronous" --> TOOLS
-    ProcessLambda --> TOOLS
+    ProcessHandler --> TOOLS
     TOOLS --> EXTERNAL
 ```
 
@@ -3995,10 +3963,10 @@ flowchart TB
     subgraph SLACK_PATH["SLACK PATH"]
         direction TB
         U1["User"] --> SlackAPI["Slack API"]
-        SlackAPI --> CmdLambda["Command Lambda"]
-        CmdLambda --> Adapter["SlackChannelAdapter"]
-        Adapter -- "enqueues SQS" --> ProcLambda["Process Lambda"]
-        ProcLambda --> Orch["Orchestrator"]
+        SlackAPI --> CmdHandler["Command Handler"]
+        CmdHandler --> Adapter["SlackChannelAdapter"]
+        Adapter -- "enqueues message" --> ProcHandler["Process Handler"]
+        ProcHandler --> Orch["Orchestrator"]
         Orch --> RespondFn["respondFn = postMessage()"]
         RespondFn --> SlackThread["Slack Thread"]
     end
@@ -4007,8 +3975,8 @@ flowchart TB
         direction TB
         U2["User"] --> CC["Claude Code"]
         CC --> Bridge["Bridge (stdin/stdout)"]
-        Bridge -- "HTTP POST (JSON-RPC)" --> MCPLambda["MCP Server Lambda"]
-        MCPLambda --> GHToken["GitHubTokenProvider\nresolve identity"]
+        Bridge -- "HTTP POST (JSON-RPC)" --> MCPServer2["MCP Server"]
+        MCPServer2 --> GHToken["GitHubTokenProvider\nresolve identity"]
         GHToken --> ToolHandler["Direct Tool Handler"]
         ToolHandler -- "JSON-RPC Response" --> Bridge2["Bridge"]
         Bridge2 --> CCResult["Claude Code displays result"]
@@ -4017,9 +3985,9 @@ flowchart TB
 
 ### 5.2.3 Why Two Paths?
 
-The Slack path is asynchronous: the Command Lambda receives the webhook, validates, enqueues to SQS, and returns HTTP 200 in less than 1 second. The Process Lambda consumes the queue, runs the Orchestrator (which can take 5-30 seconds), and posts the response via the chat API.
+The Slack path is asynchronous: the Command Handler receives the webhook, validates, enqueues to SQS, and returns HTTP 200 in less than 1 second. The Process Handler consumes the queue, runs the Orchestrator (which can take 5-30 seconds), and posts the response via the chat API.
 
-The Claude Code path is synchronous: the MCP Server Lambda receives a JSON-RPC request, executes the tool handler directly, and returns the result on the same HTTP connection. There is no queue, no session -- each call is atomic. The intelligence (orchestration, *multi-turn*) lives in Claude Code itself.
+The Claude Code path is synchronous: the MCP Server receives a JSON-RPC request, executes the tool handler directly, and returns the result on the same HTTP connection. There is no queue, no session -- each call is atomic. The intelligence (orchestration, *multi-turn*) lives in Claude Code itself.
 
 This duality allows the same tool layer to serve both clients without logic duplication.
 
@@ -4261,21 +4229,21 @@ Step   Component            Action
 -----  --------------------  ------------------------------------------
   1    User                 Types "how is the infra?" in channel
   2    Slack API            Sends webhook POST to API Gateway
-  3    Command Lambda       Validates signature, extracts text and threadTs
-  4    Command Lambda       Enqueues message to SQS (JSON)
-  5    Command Lambda       Returns HTTP 200 to Slack (< 1s)
-  6    SQS                  Delivers message to Process Lambda
-  7    Process Lambda       Loads catalog (core bundle + S3 packs)
-  8    Process Lambda       Resolves identity (Slack ID -> Role)
+  3    Command Handler       Validates signature, extracts text and threadTs
+  4    Command Handler       Enqueues message to queue (JSON)
+  5    Command Handler       Returns HTTP 200 to Slack (< 1s)
+  6    Message Queue        Delivers message to Process Handler
+  7    Process Handler       Loads catalog (core bundle + S3 packs)
+  8    Process Handler       Resolves identity (Slack ID -> Role)
   9    Orchestrator         Classifies query -> matches with Use-Case
  10    Orchestrator         Selects mode: Direct Executor or Agent
  11a   Direct Executor      Calls tool handlers in parallel
  11b   Agent Runner         Starts Agent SDK with allowed tools list
  12    Tool Handlers        Execute AWS/GitHub/Jira calls
- 13    Bedrock              Summarizes results (1 call for direct,
+ 13    LLM                  Summarizes results (1 call for direct,
                             3-5 for agent)
- 14    Process Lambda       Saves messages to session (DynamoDB)
- 15    Process Lambda       Posts response via Slack API (in thread)
+ 14    Process Handler       Saves messages to session store
+ 15    Process Handler       Posts response via Slack API (in thread)
 ```
 
 ### 5.4.2 Claude Code Path (Synchronous)
@@ -4289,62 +4257,66 @@ Step   Component            Action
   4    Claude Code          Sends JSON-RPC via stdin to Bridge
   5    Bridge               Reads token from OS keychain
   6    Bridge               Forwards JSON-RPC via HTTP POST
-  7    API Gateway          Routes to MCP Server Lambda
-  8    MCP Server Lambda    Validates token (GitHub OAuth / API key)
-  9    MCP Server Lambda    Resolves identity (GitHub user -> Role)
- 10    MCP Server Lambda    Checks permission: role x tool x scope
+  7    HTTP gateway         Routes to MCP Server
+  8    MCP Server    Validates token (GitHub OAuth / API key)
+  9    MCP Server    Resolves identity (GitHub user -> Role)
+ 10    MCP Server    Checks permission: role x tool x scope
  11    Tool Handler         Executes AWS/GitHub/Jira call
- 12    MCP Server Lambda    Returns result via JSON-RPC response
+ 12    MCP Server    Returns result via JSON-RPC response
  13    Bridge               Relays stdout to Claude Code
  14    Claude Code          Repeats steps 3-13 for next tools
  15    Claude Code          Synthesizes results and presents to user
 ```
 
-The fundamental difference: in the Slack path, the intelligence (orchestration, classification, summarization) resides in the Process Lambda. In the Claude Code path, the intelligence resides in Claude Code itself -- the MCP Server Lambda is just an authenticated proxy for the tool handlers.
+The fundamental difference: in the Slack path, the intelligence (orchestration, classification, summarization) resides in the Process Handler. In the Claude Code path, the intelligence resides in Claude Code itself -- the MCP Server is just an authenticated proxy for the tool handlers.
 
 ---
 
-## 5.5 AgentRun Serverless Architecture
+## 5.5 Compute Architecture
 
-The data flow reveals that both paths converge in three Lambda functions. This section details how each scales and behaves under load.
+> *Note: This section describes the reference deployment on AWS Lambda. The provider pattern (section 4.12) allows alternative compute backends.*
 
-### 5.5.1 Three Lambdas, Three Responsibilities
+The data flow reveals that both paths converge in three handler functions. This section details how each scales and behaves under load.
 
-AgentRun is composed of three Lambda functions, each with a well-defined scope:
+### 5.5.1 Three Handlers, Three Responsibilities
 
-> **Key concept**: Ingestion/processing separation. The Command Lambda responds to Slack in less than 1 second and enqueues the message to SQS. The Process Lambda consumes the queue without time pressure, taking up to 15 minutes. This separation resolves the conflict between Slack's 3-second timeout and AI processing time (5-30 seconds).
+AgentRun is composed of three handler functions, each with a well-defined scope:
 
-| Lambda | Trigger | Timeout | Memory | Responsibility |
+> *Note: The Timeout and Memory values below are AWS Lambda reference values for the default deployment. Alternative compute backends may use different configuration parameters.*
+
+> **Key concept**: Ingestion/processing separation. The Command Handler responds to Slack in less than 1 second and enqueues the message to SQS. The Process Handler consumes the queue without time pressure, taking up to 15 minutes. This separation resolves the conflict between Slack's 3-second timeout and AI processing time (5-30 seconds).
+
+| Handler | Trigger | Timeout | Memory | Responsibility |
 |--------|---------|---------|--------|----------------|
 | **Command** | API Gateway (POST) | 30s | 128MB | Validate webhook, enqueue to SQS |
 | **Process** | SQS | 900s | 512MB | Execute Orchestrator + Agent/Executor |
 | **MCP Server** | API Gateway (POST) | 30s | 256MB | Serve JSON-RPC for MCP clients |
 
-### 5.5.2 Decoupling via SQS
+### 5.5.2 Decoupling via Message Queue
 
 Slack imposes a 3-second timeout for responding to webhooks. If the response does not arrive in that interval, the user sees an error -- but it does not mean processing failed; it just means Slack gave up waiting.
 
-SQS solves this problem by separating ingestion from processing:
+A message queue solves this problem by separating ingestion from processing:
 
-Figure 5.4 -- Decoupling via SQS.
+Figure 5.4 -- Decoupling via message queue.
 
 ```mermaid
 sequenceDiagram
-    participant CL as Command Lambda
-    participant SQS as SQS
-    participant PL as Process Lambda
+    participant CH as Command Handler
+    participant MQ as Message Queue
+    participant PH as Process Handler
 
-    CL->>CL: Receives webhook
-    CL->>CL: Validates signature
-    CL->>CL: Extracts message
-    CL->>SQS: Enqueues message
-    CL-->>CL: Returns HTTP 200 (< 1s)
-    SQS->>PL: Delivers message
-    PL->>PL: Processes (5-30s)
-    PL->>PL: Responds via API
+    CH->>CH: Receives webhook
+    CH->>CH: Validates signature
+    CH->>CH: Extracts message
+    CH->>MQ: Enqueues message
+    CH-->>CH: Returns HTTP 200 (< 1s)
+    MQ->>PH: Delivers message
+    PH->>PH: Processes (5-30s)
+    PH->>PH: Responds via API
 ```
 
-The SQS `visibility_timeout` is configured as `lambda_timeout + 30s` (930 seconds total). This prevents a message from being reprocessed while the Process Lambda is still working.
+The SQS `visibility_timeout` is configured as `handler_timeout + 30s` (930 seconds total). This prevents a message from being reprocessed while the Process Handler is still working.
 
 ### 5.5.3 Dead Letter Queue (DLQ)
 
@@ -4355,18 +4327,18 @@ Figure 5.5 -- DLQ flow.
 ```mermaid
 flowchart TB
     SQS["SQS Queue (main)\nmaxReceiveCount = 3"]
-    T1["Process Lambda (attempt 1)"]
-    T2["Process Lambda (attempt 2)"]
-    T3["Process Lambda (attempt 3)"]
+    T1["Handler (attempt 1)"]
+    T2["Handler (attempt 2)"]
+    T3["Handler (attempt 3)"]
     DLQ["DLQ (dead letters)"]
     Alert["Alert via /dlq-alert"]
 
     SQS --> T1 -- "failed" --> T2 -- "failed" --> T3 -- "failed" --> DLQ --> Alert
 ```
 
-### 5.5.4 MCP Server Lambda
+### 5.5.4 MCP Server
 
-The MCP Server Lambda implements the JSON-RPC 2.0 protocol as an HTTP endpoint. Unlike the Process Lambda, it does not use the Agent SDK -- it executes tool handlers directly:
+The MCP Server implements the JSON-RPC 2.0 protocol as an HTTP endpoint. Unlike the Process Handler, it does not use the Agent SDK -- it executes tool handlers directly:
 
 ```typescript
 // MCP Server handler pseudocode
@@ -4397,15 +4369,63 @@ The `?scope=` parameter allows the same endpoint to serve multiple MCP servers w
 
 | Scope | Exposed Tools |
 |-------|---------------|
-| `aws` | `describe_eks_cluster`, `describe_rds`, `list_lambdas`, `get_lambda_details`, `search_cloudwatch_logs`, `list_sqs_queues`, `get_sqs_attributes` |
+| `aws` | `describe_eks_cluster`, `describe_rds`, `list_lambdas`, `get_lambda_details`, `search_cloudwatch_logs`, `list_sqs_queues`, `get_sqs_attributes`, `searchKnowledgeBase` |
 | `github` | `list_open_prs`, `get_pr_details`, `recent_commits` |
 | `jira` | `search_jira_issues`, `get_jira_issue`, `list_jira_projects`, `create_jira_issue`, `add_jira_comment`, `transition_jira_issue` |
 
 ---
 
+### 5.5.5 Environment Variables Reference
+
+AgentRun uses environment variables for runtime configuration. All platform-specific variables use the `AGENTRUN_` prefix.
+
+**Core:**
+
+| Variable | Description |
+|----------|-------------|
+| `AGENTRUN_PLATFORM_CONFIG` | Path to `agentrun.config.yaml` |
+| `AGENTRUN_NAME` | Platform instance name |
+| `AGENTRUN_ENV` | Environment (`prd`, `stg`, `dev`) |
+| `LOG_LEVEL` | Log verbosity (`debug`, `info`, `warn`, `error`) |
+| `ANTHROPIC_MODEL` | LLM model ID for agent reasoning |
+
+**Storage:**
+
+| Variable | Description |
+|----------|-------------|
+| `AGENTRUN_SESSIONS_TABLE` | Session store table name (DynamoDB) |
+| `AGENTRUN_USAGE_TABLE` | Usage tracking table name (DynamoDB) |
+| `AGENTRUN_MANIFESTS_BUCKET` | Manifest store bucket/path (S3) |
+
+**Infrastructure targets:**
+
+| Variable | Description |
+|----------|-------------|
+| `AGENTRUN_EKS_CLUSTER` | EKS cluster name for tools |
+| `AGENTRUN_RDS_CLUSTER_ID` | RDS cluster identifier |
+| `AGENTRUN_RDS_PROXY_NAME` | RDS proxy name |
+| `AGENTRUN_SQS_PREFIX` | SQS queue name prefix |
+| `AGENTRUN_LAMBDA_PREFIX` | Lambda function name prefix |
+
+**Security:**
+
+| Variable | Description |
+|----------|-------------|
+| `AGENTRUN_HTTP_ALLOWLIST` | Allowed HTTP endpoints (comma-separated) |
+| `AGENTRUN_LAMBDA_PREFIX` | Allowed Lambda invoke prefixes |
+
+**GitHub/Jira:**
+
+| Variable | Description |
+|----------|-------------|
+| `GITHUB_ORG` | GitHub organization scope |
+| `GITHUB_REPOS` | GitHub repositories scope (comma-separated) |
+| `JIRA_BASE_URL` | Jira instance URL |
+| `JIRA_ORG` | Jira organization scope |
+
 ## 5.6 State Management
 
-Lambdas are *stateless* by nature. All information that needs to survive between invocations -- conversation sessions, usage metrics, pack cache -- requires explicit state management.
+Handlers are *stateless* by design. All information that needs to survive between invocations -- conversation sessions, usage metrics, pack cache -- requires explicit state management.
 
 ### 5.6.1 Conversation Sessions
 
@@ -4426,7 +4446,7 @@ channel123#thread456   1708900125000      asst    "Aurora: ..."   1709504800
 - **SK (timestamp)**: milliseconds -- orders messages chronologically
 - **TTL**: 7 days after creation -- automatic cleanup
 
-**Context reconstruction**: The Process Lambda loads the entire session history and injects it as a prompt prefix, allowing the agent to have context of previous interactions in the same thread.
+**Context reconstruction**: The Process Handler loads the entire session history and injects it as a prompt prefix, allowing the agent to have context of previous interactions in the same thread.
 
 **Truncation**: To avoid exceeding token limits, history is truncated to 50,000 characters, removing oldest messages first.
 
@@ -4465,7 +4485,7 @@ Figure 5.6 -- Pack cache lifecycle.
 
 ```mermaid
 flowchart TB
-    ColdStart["Lambda cold start"]
+    ColdStart["Handler cold start"]
     CoreBundle["Loads core bundle\n(synchronous, ~10ms)"]
     FirstReq["First request arrives"]
     FetchS3["Fetches packs from S3\n(asynchronous, ~200ms)"]
@@ -4485,27 +4505,27 @@ flowchart TB
 
 ## 5.7 Scalability
 
-### 5.7.1 Lambda Concurrency
+### 5.7.1 Handler Concurrency
 
-Each Lambda scales independently based on demand:
+Each handler scales independently based on demand:
 
-| Lambda | Typical Concurrency | Expected Peak | Strategy |
+| Handler | Typical Concurrency | Expected Peak | Strategy |
 |--------|--------------------|--------------|---------:|
 | Command | 1-5 | 20 | Default (no reserved) |
 | Process | 1-3 | 10 | Limited by SQS batch size |
 | MCP Server | 1-5 | 15 | Default (no reserved) |
 
-The Process Lambda is naturally limited by SQS: each invocation processes one message at a time (`batchSize: 1`), and the 930-second `visibility_timeout` prevents reprocessing during execution.
+The Process Handler is naturally limited by the message queue: each invocation processes one message at a time (`batchSize: 1`), and the 930-second `visibility_timeout` prevents reprocessing during execution.
 
 ### 5.7.2 Cache Layers
 
 AgentRun employs three in-memory cache layers, each with a distinct TTL optimized for its access pattern:
 
-Figure 5.7 -- In-memory caches per Lambda.
+Figure 5.7 -- In-memory caches per handler instance.
 
 ```mermaid
 graph TD
-    subgraph CACHES["IN-MEMORY CACHES (per Lambda)"]
+    subgraph CACHES["IN-MEMORY CACHES (per handler instance)"]
         subgraph IC["Identity Cache -- TTL: 10 min"]
             IC_DESC["GitHub user --> Role\nAvoids repeated calls\nto api.github.com/user"]
         end
@@ -4528,7 +4548,8 @@ TTLs were empirically calibrated:
 AWS SDK v3 reuses HTTP connections by default via `keepAlive`. Combined with Lambda's *warm-start* model, this means subsequent invocations reuse already-established TCP connections with AWS services:
 
 ```typescript
-// Clients created outside the handler -- survive between invocations
+// AWS Lambda implementation: clients created outside the handler survive between invocations
+// (Lambda warm-start preserves module-level state)
 const eksClient = new EKSClient({});
 const rdsClient = new RDSClient({});
 const sqsClient = new SQSClient({});
@@ -4684,18 +4705,18 @@ function deriveRoleFromTeams(teams: string[]): Role {
 
 ### 5.9.4 From Agent SDK to Direct Executor
 
-**Before**: All processing went through the Agent SDK -- a *multi-turn* loop where the model decided which tools to call. Even predictable skills like `health-check` (which always call the same 5 tools) went through 3-5 Bedrock calls.
+**Before**: All processing went through the Agent SDK -- a *multi-turn* loop where the model decided which tools to call. Even predictable skills like `health-check` (which always call the same 5 tools) went through 3-5 LLM calls.
 
 **Problem**: 8-15 second latency and ~$0.05-0.10 cost per invocation for skills with deterministic results.
 
-**After**: The execution system started supporting two modes: `agent` (multi-turn via Agent SDK) and `direct` (tools called programmatically + 1 single Bedrock call to summarize). The `direct` mode is 3-5x faster and 5x cheaper:
+**After**: The execution system started supporting two modes: `agent` (multi-turn via Agent SDK) and `direct` (tools called programmatically + 1 single LLM call to summarize). The `direct` mode is 3-5x faster and 5x cheaper:
 
 Figure 5.8 -- Agent Mode vs Direct Mode comparison.
 
 ```mermaid
 graph LR
     subgraph AGENT["Agent Mode"]
-        A1["Bedrock: 3-5 calls"]
+        A1["LLM: 3-5 calls"]
         A2["Latency: 8-15 seconds"]
         A3["Cost: ~$0.05-0.10"]
         A4["Predictable: No (model decides)"]
@@ -4703,7 +4724,7 @@ graph LR
     end
 
     subgraph DIRECT["Direct Mode"]
-        D1["Bedrock: 1 call"]
+        D1["LLM: 1 call"]
         D2["Latency: 3-5 seconds"]
         D3["Cost: ~$0.01-0.02"]
         D4["Predictable: Yes (code decides)"]
@@ -4725,7 +4746,7 @@ const result = await tool.handler({ clusterName: "my-cluster" }, null);
 
 **Problem**: Impossible to install AgentRun in another organization without fork + manual adaptation. Fixed roles in a union type (`"viewer" | "developer" | ...`) prevented customization.
 
-**After**: The core was refactored around 7 provider interfaces, each with a concrete AWS implementation:
+**After**: The core was refactored around 10 provider interfaces (7 core + 3 optional RAG-specific), each with a concrete AWS implementation. The core interfaces:
 
 | Interface | AWS Implementation | Responsibility |
 |-----------|-------------------|----------------|
@@ -4736,6 +4757,9 @@ const result = await tool.handler({ clusterName: "my-cluster" }, null);
 | `ManifestStore` | `S3ManifestStore` | Reading pack manifests |
 | `QueueProvider` | `SqsQueueProvider` | Asynchronous dispatch |
 | `BootstrapSecretProvider` | `SmBootstrapProvider` | Secrets at cold start |
+| `EmbeddingProvider` *(optional)* | `BedrockEmbeddingProvider` | Text-to-vector conversion (RAG) |
+| `VectorStore` *(optional)* | `PgVectorStore` | Vector similarity search (RAG) |
+| `DocumentIngester` *(optional)* | `MarkdownIngester` | Document chunking for RAG ingestion |
 
 The `PlatformRegistry` (singleton) stores the instances and is accessed by the entire core. The `PlatformConfig` (YAML validated with Zod) defines which implementation to use, plus roles, users, resources, and environment. The `Role` type changed from a union type to `string` -- any organization can define custom roles.
 
@@ -5049,7 +5073,7 @@ interface ProtocolAdapter {
 
 #### 5.10.4.3 Agent Card Endpoint
 
-The MCP Server Lambda exposes an `agent/card` endpoint that returns the AgentRun Agent Card:
+The MCP Server exposes an `agent/card` endpoint that returns the AgentRun Agent Card:
 
 ```text
 POST /agentrun/mcp
@@ -5210,7 +5234,7 @@ detects:
 
 AgentRun's system design is governed by four central architectural decisions:
 
-1. Ingestion/processing separation via SQS: enables meeting Slack's 3-second timeout without sacrificing the time needed for AI processing (5-30 seconds).
+1. Ingestion/processing separation via message queue: enables meeting Slack's 3-second timeout without sacrificing the time needed for AI processing (5-30 seconds).
 
 2. *Channel Adapter pattern*: decouples the user interface from business logic, allowing Slack and Claude Code (and future clients) to share the same tool layer.
 
@@ -5251,12 +5275,14 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *ChannelContext* | Channel-agnostic DTO that carries userId, message text, sessionId, and response callback. Produced by the *Channel Adapter* and consumed by the *Orchestrator*. |
 | *checksum* | Cryptographic hash (SHA256) used to verify binary integrity during *Bridge* updates. |
 | *CredentialProvider* | Platform interface that returns credentials scoped per role. The return type is `unknown` (opaque) -- only tool handlers know how to interpret it. AWS implementation: `StsCredentialProvider` (STS AssumeRole). |
-| *cold start* | First invocation of a Lambda function, when the runtime needs to be initialized. Core bundle manifests are loaded at this time. |
+| *cold start* | First invocation of a handler (e.g., a Lambda function), when the runtime needs to be initialized. Core bundle manifests are loaded at this time. |
 | *context window* | Maximum number of tokens an AI model can process in a single call. Reducing the context window decreases cost and latency. |
 | DAG | *Directed Acyclic Graph*. Cycle-free graph structure used to model the inheritance hierarchy between packs, ensuring circular dependencies are rejected. |
-| *Dead Letter Queue* (DLQ) | SQS queue that receives messages that failed after the maximum number of processing attempts, enabling *post-mortem* investigation. |
+| *Dead Letter Queue* (DLQ) | Queue that receives messages that failed after the maximum number of processing attempts, enabling *post-mortem* investigation. |
 | *Device Flow* | OAuth flow (RFC 8628) designed for CLIs and devices without an integrated browser, where the user authorizes access in a separate browser by entering a code. |
 | *Direct Executor* | Executor that calls tool handlers directly, without Agent SDK intermediation, followed by a single LLM call for summarization. Suited for deterministic skills. |
+| *DocumentIngester* | Platform interface for chunking documents into embeddable segments. Used by the RAG pipeline to split source documents before embedding. Default implementation: MarkdownIngester (heading-based chunking). |
+| *EmbeddingProvider* | Platform interface for text-to-vector conversion. Used by the RAG pipeline to generate embeddings for document chunks and queries. AWS implementation: Bedrock Titan Embed v2. |
 | *Eval* | Manifest kind (`kind: Eval`) that declares test cases for skill routing validation. Supports two phases: *trigger eval* (instant keyword matching) and *execution eval* (live infrastructure). Six expectation types: `contains`, `not_contains`, `tool_called`, `tool_not_called`, `matches_regex`, `llm_judge`. |
 | DynamoDB | AWS NoSQL database service used by AgentRun for conversation sessions, usage tracking, and API key registration. |
 | *Factory* | Design pattern that centralizes object creation (tools, handlers), ensuring different types are instantiated by the correct factory. |
@@ -5281,21 +5307,22 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *prompt injection* | Attack where the user attempts to manipulate the AI agent to ignore restrictions, reveal information, or execute unauthorized actions. |
 | *ProtocolAdapter* | Interface that abstracts communication with different agent protocols (MCP, A2A). Defines `negotiate()`, `submitTask()`, and `getTaskStatus()`. Allows AgentRun to respond to multiple protocols using the same tool registry. |
 | *PlatformConfig* | Declarative YAML file (`agentrun.config.yaml`) that defines all configuration for an AgentRun deployment: providers, roles, users, resources, and environment. Validated with Zod at cold start. Allows any organization to install AgentRun without modifying code. |
-| *PlatformRegistry* | Singleton that stores and serves instances of the 7 provider interfaces (`LlmProvider`, `CredentialProvider`, `SessionStore`, `UsageStore`, `ManifestStore`, `QueueProvider`, `BootstrapSecretProvider`). Initialized at bootstrap and accessed by the entire platform core. |
+| *PlatformRegistry* | Singleton that stores and serves instances of the 10 provider interfaces: 7 core (`LlmProvider`, `CredentialProvider`, `SessionStore`, `UsageStore`, `ManifestStore`, `QueueProvider`, `BootstrapSecretProvider`) and 3 optional RAG-specific (`EmbeddingProvider`, `VectorStore`, `KnowledgeBaseProvider`). Initialized at bootstrap and accessed by the entire platform core. |
 | RBAC | *Role-Based Access Control*. Access control model based on roles. AgentRun defines extensible roles via `PlatformConfig` -- the *well-known* ones (`viewer`, `executive`, `developer`, `tech_lead`, `platform`) cover common scenarios, but organizations can add custom roles without modifying code. |
 | *read-only* | AgentRun's architectural principle: the platform observes infrastructure but never modifies it, eliminating entire categories of risk. |
 | *ResponseCategory* | Enum returned by `classifyQuery()`: `greeting`, `lambda`, `kubernetes`, `database`, `logs`, `pull_requests`, `metrics`, `sqs`, `generic`. Determines which skill the Orchestrator selects for a given query. |
+| *VectorStore* | Platform interface for vector similarity search. Used by the RAG pipeline for chunk retrieval based on semantic similarity. AWS implementation: Aurora pgvector. |
 | *QueueProvider* | Platform interface for asynchronous message dispatch. AWS implementation: `SqsQueueProvider` (SQS). |
 | *scope* | Parameter that filters which tools are exposed to the MCP client, organizing them by domain (`aws`, `github`, `jira`). |
 | *skill* | Pre-built prompt with tool list and output format, executable as a slash command. Supports `direct` (deterministic) or `agent` (agentic) mode. |
 | *stale-while-revalidate* | Cache strategy where expired data continues being served while an update is fetched in background, prioritizing availability over freshness. |
 | *StreamableHTTP* | Future MCP transport that replaces SSE with bidirectional streaming. Enables partial responses and server-push notifications during execution of long workflows. |
 | *SessionStore* | Platform interface for conversation history persistence. AWS implementation: `DynamoSessionStore` (DynamoDB). |
-| SQS | *Simple Queue Service*. AWS queue service used to decouple ingestion (Command Lambda) from processing (Process Lambda). |
+| SQS | *Simple Queue Service*. AWS queue service used to decouple ingestion (Command Handler) from processing (Process Handler). |
 | *tool* | Atomic capability registered in the catalog. Native types (`mcp-server`) have TypeScript handlers; declarative types (`aws-sdk`, `http`, `lambda`) register only access config and are invoked via workflow steps. |
 | *UsageStore* | Platform interface for tracking token consumption per user. AWS implementation: `DynamoUsageStore` (DynamoDB). |
 | *use-case* | User intent mapped by keywords to a set of workflows. The `classifyQuery()` function (see section 4.14.1) determines the *ResponseCategory*, which the Orchestrator maps to the appropriate use-case. |
-| *warm-start* | Lambda function invocation that reuses an already-initialized runtime, with HTTP clients and in-memory caches preserved. |
+| *warm-start* | Handler invocation that reuses an already-initialized runtime (e.g., Lambda warm start), with HTTP clients and in-memory caches preserved. |
 | *workflow* | Composition of tools to achieve a goal. Two modes: *flat* (tool list for RBAC) or *step-based* (deterministic pipeline with `steps[]`). Workflows with steps are auto-registered as invocable MCP tools. |
 | *workflow step* | Sequential execution unit within a workflow. Defines `tool` (capability), `action` (operation), `input` (with `{{ }}` interpolation), `outputTransform` (JMESPath), and `timeoutMs`. Steps can chain results via `{{ steps.X.result }}`. |
 | *Workflow Engine* | Runtime component that executes workflow steps sequentially: resolves tool in catalog, interpolates input, dispatches to executor (aws-sdk/http/lambda), applies JMESPath, chains results between steps. |
@@ -5319,11 +5346,11 @@ This foundation is not decorative. Without it, an AI-powered observability platf
 
 ## The Technical Execution
 
-The two final chapters -- software engineering and system design -- show how the foundation of trust materializes in code. Six classic *design patterns* solve concrete problems: *Strategy* decouples channels and platform providers, *Factory* decouples tool types, *Chain of Responsibility* resolves identities, *Observer* intercepts executions for auditing and security, *Template Method* structures the Orchestrator flow, and *Decorator* overlays RBAC and scope filters. The *Platform Abstraction Layer* and `PlatformRegistry` ensure that AgentRun's core is vendor-agnostic -- the 7 provider interfaces allow swapping LLM, sessions, credentials, and storage without changing a single line of core code.
+The two final chapters -- software engineering and system design -- show how the foundation of trust materializes in code. Six classic *design patterns* solve concrete problems: *Strategy* decouples channels and platform providers, *Factory* decouples tool types, *Chain of Responsibility* resolves identities, *Observer* intercepts executions for auditing and security, *Template Method* structures the Orchestrator flow, and *Decorator* overlays RBAC and scope filters. The *Platform Abstraction Layer* and `PlatformRegistry` ensure that AgentRun's core is vendor-agnostic -- the 10 provider interfaces (7 core + 3 optional RAG-specific) allow swapping LLM, sessions, credentials, storage, and knowledge base without changing a single line of core code.
 
 The hybrid execution decision is perhaps the most impactful: skills with fixed tool sequences execute 3-5x faster and 5x cheaper via *Direct Executor*, while open-ended queries still use the complete agentic loop. The Orchestrator selects the mode automatically -- the user does not need to know which mechanism is in action.
 
-At the system level, the ingestion/processing separation via SQS resolves the fundamental conflict between Slack's 3-second timeout and AI processing time. The two-stage catalog loading ensures the platform works even when S3 is unavailable. And the pack system enables extensibility without deployment, without rewriting, without central coordination.
+At the system level, the ingestion/processing separation via message queue resolves the fundamental conflict between Slack's 3-second timeout and AI processing time. The two-stage catalog loading ensures the platform works even when S3 is unavailable. And the pack system enables extensibility without deployment, without rewriting, without central coordination.
 
 ---
 
