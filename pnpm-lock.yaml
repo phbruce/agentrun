@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@anthropic-ai/claude-code':
+        specifier: '>=0.1.0'
+        version: 2.1.70
       '@aws-sdk/client-bedrock-runtime':
         specifier: ^3.700.0
         version: 3.1000.0
@@ -111,9 +114,6 @@ importers:
         specifier: ^3.23.0
         version: 3.25.76
     optionalDependencies:
-      '@anthropic-ai/claude-code':
-        specifier: '>=0.1.0'
-        version: 2.1.70
       '@aws-sdk/client-bedrock-agent':
         specifier: ^3.700.0
         version: 3.1002.0
@@ -1832,7 +1832,6 @@ snapshots:
       '@img/sharp-linuxmusl-x64': 0.34.5
       '@img/sharp-win32-arm64': 0.34.5
       '@img/sharp-win32-x64': 0.34.5
-    optional: true
 
   '@aws-crypto/crc32@5.2.0':
     dependencies:
