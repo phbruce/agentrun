@@ -64,6 +64,7 @@ export default {
                 'aws',
                 'channel-slack',
                 'channel-mcp',
+                'channel-gchat',
                 'tools-aws',
                 'tools-github',
                 'tools-jira',
