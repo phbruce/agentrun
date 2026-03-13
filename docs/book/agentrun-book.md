@@ -68,7 +68,9 @@ The book's structure follows a progression from "why" to "how": it begins with g
 - 4.10 Trade-off Decisions
 - 4.11 Historical Notes
 - 4.12 Open-Source Extraction
-- 4.13 Conclusion
+- 4.13 AgentRun CLI
+- 4.14 Eval Framework
+- 4.15 Conclusion
 
 ### Chapter 5 -- System Design
 - 5.1 Overview
@@ -2500,8 +2502,10 @@ class Orchestrator {
   }
 
   private classify(ctx: ChannelContext): UseCase {
-    // Keyword matching + LLM fallback for ambiguous queries
-    return this.catalog.matchUseCase(ctx.text);
+    // Pure keyword matching via classifyQuery() (see section 4.14.1)
+    // Returns a ResponseCategory used to select the matching skill
+    const category = classifyQuery(ctx.text);
+    return this.catalog.matchUseCase(category);
   }
 
   private selectExecutor(useCase: UseCase): Executor {
@@ -3574,18 +3578,19 @@ standalone open-source project (`phbruce/agentrun`), licensed under AGPLv3.
 
 ### 4.12.1 Monorepo Structure
 
-AgentRun is published as 8 independent npm packages:
+AgentRun is organized as a pnpm/Turborepo monorepo with 8 npm packages and a Go binary:
 
 | Package | Responsibility |
 |---------|---------------|
-| `@agentrun-ai/core` | Types, interfaces, provider registry |
+| `@agentrun-ai/core` | Types, interfaces, provider registry, classifier, orchestrator, eval schema |
 | `@agentrun-ai/aws` | AWS providers (Bedrock, STS, DynamoDB, S3, SQS, Secrets Manager) |
-| `@agentrun-ai/tools-aws` | Declarative AWS tools |
-| `@agentrun-ai/tools-github` | GitHub tools |
-| `@agentrun-ai/tools-jira` | Jira tools |
-| `@agentrun-ai/sdk` | Agent SDK, Direct Executor, Orchestrator |
-| `@agentrun-ai/cli` | CLI for validation, ingestion, and debug |
-| `@agentrun-ai/bridge` | MCP bridge (shared entrypoint) |
+| `@agentrun-ai/tools-aws` | Declarative AWS infrastructure tools |
+| `@agentrun-ai/tools-github` | GitHub tools (PRs, commits) |
+| `@agentrun-ai/tools-jira` | Jira tools (issues, projects, transitions) |
+| `@agentrun-ai/channel-slack` | Slack channel adapter |
+| `@agentrun-ai/channel-mcp` | MCP JSON-RPC channel adapter |
+| `@agentrun-ai/cli` | CLI for validation, eval, ingestion, and pack management |
+| `bridge/` (Go) | MCP stdin/stdout proxy with OAuth and OS keychain integration |
 
 ### 4.12.2 Extensibility Pattern
 
@@ -3608,38 +3613,9 @@ This allows OSS users to swap AWS implementations for alternatives
 
 ---
 
-## 4.13 Conclusion
+## 4.13 AgentRun CLI
 
-AgentRun's software engineering reflects a central principle: declare
-intentions, not procedures. YAML manifests declare what to do; the
-design patterns in the core determine how to do it; and the pack system allows
-teams to extend where to do it -- all without modifying the core.
-
-The classic patterns (Strategy, Factory, Chain of Responsibility, Observer,
-Template Method, Decorator) were not adopted for academic reasons, but out of
-practical necessity: multiple channels require Strategy; multiple tool types
-require Factory; multiple identity sources require Chain; security and
-auditing require Observer.
-
-The most impactful decision was hybrid execution (Agent Runner + Direct Executor).
-Deterministic skills execute 3-5x faster and 5x cheaper when they do not
-need adaptive reasoning. The Orchestrator selects the mode automatically
--- the user does not need to know which mechanism is in action.
-
-The open-source extraction (section 4.12) demonstrates that internal platforms
-can evolve into reusable products when the architecture correctly separates the
-generic core (orchestration, providers, manifests) from specific context
-(packs, config, custom tools).
-
-Finally, the Go Bridge demonstrates that selective polyglotism is valid: when the requirement (single binary, instant startup, native keychain) does not fit the main runtime, using the right tool for the job compensates for the cost of maintaining two runtimes.
-
-This chapter described how AgentRun is built at the component level. The next chapter raises the perspective to the system level: how components connect in production, how they scale, and how the architecture evolved in response to real problems.
-
----
-
-## 4.12 AgentRun CLI
-
-### 4.12.1 Motivation
+### 4.13.1 Motivation
 
 The original manifest validation pipeline suffered from three couplings with GitHub Actions:
 
@@ -3651,7 +3627,7 @@ The original manifest validation pipeline suffered from three couplings with Git
 
 The core problem: **two sources of truth for the same validation logic**. When `packTypes.ts` added a required field (like `allowedRoles` in Skills or `template` in UseCases), the inline CI did not detect the violation because it used simplified schemas.
 
-### 4.12.2 Architecture
+### 4.13.2 Architecture
 
 The AgentRun CLI solves the problem by importing schemas directly from `packTypes.ts`:
 
@@ -3670,7 +3646,7 @@ src/domains/agentrun/
 
 The same import `PackManifestSchema`, `RemoteToolSchema`, `RemoteWorkflowSchema` etc. is used both by the Lambda runtime and by the CLI. Zero duplication.
 
-### 4.12.3 Commands
+### 4.13.3 Commands
 
 ```bash
 # Validate manifests locally (same schemas as runtime)
@@ -3683,6 +3659,9 @@ agentrun sync <dir> --bucket <b> --pack <p> [--delete] [--dry-run]
 agentrun pack list --bucket <b>
 agentrun pack info <name> --bucket <b>
 agentrun pack publish <dir> --bucket <b>
+
+# Eval framework (see section 4.14)
+agentrun eval <dir> [--mode trigger|execution|all] [--filter <name>] [--json] [--threshold <0.0-1.0>]
 ```
 
 Validation runs in two passes:
@@ -3704,7 +3683,7 @@ interface ValidationResult {
 }
 ```
 
-### 4.12.4 Build and Distribution
+### 4.13.4 Build and Distribution
 
 The CLI is built as a single ESM file via esbuild:
 
@@ -3729,7 +3708,7 @@ The artifact (`agentrun-cli.mjs`) is published to `s3://agentrun-manifests/cli/a
 - run: node agentrun-cli.mjs validate .agentrun/manifests
 ```
 
-### 4.12.5 CI Integration
+### 4.13.5 CI Integration
 
 CI workflows were drastically simplified:
 
@@ -3742,6 +3721,167 @@ CI workflows were drastically simplified:
 **After**: `node agentrun-cli.mjs validate` (pre-sync) + `node agentrun-cli.mjs sync --delete`. Validation now happens *before* sync, preventing publication of invalid manifests.
 
 The main benefit: when `packTypes.ts` evolves (new required field, new tool type, new validation), the CLI in the next build already reflects the change. No CI workflow needs to be updated.
+
+---
+
+## 4.14 Eval Framework
+
+AgentRun includes a built-in evaluation framework that validates skill routing accuracy without requiring cloud infrastructure or LLM invocations. The framework operates in two phases: *trigger eval* (deterministic, instant) and *execution eval* (requires AWS runtime, deferred).
+
+### 4.14.1 Query Classifier
+
+At the core of the eval framework is `classifyQuery()`, a pure function in `@agentrun-ai/core` that categorizes natural language queries into response categories using keyword matching.
+
+**Categories:**
+
+| Category | Purpose | Example Keywords |
+|----------|---------|-----------------|
+| `greeting` | Greetings, help requests | "oi", "hello", "help", "ajuda" |
+| `lambda` | Lambda function queries | "lambda", "função", "timeout", "cold start", "concurrency" |
+| `kubernetes` | EKS/K8s cluster queries | "k8s", "pod", "eks", "namespace", "helm", "istio" |
+| `database` | RDS/Aurora queries | "banco", "rds", "aurora", "postgres", "conexão", "oltp" |
+| `logs` | CloudWatch log queries | "log", "cloudwatch", "erro", "exception", "stack trace" |
+| `pull_requests` | GitHub PRs, deploys | "pr", "commit", "merge", "deploy", "release", "shipped" |
+| `metrics` | Performance metrics | "cpu", "latência", "throughput", "invocations", "duration" |
+| `sqs` | SQS/DLQ queries | "sqs", "fila", "dlq", "dead letter", "stuck", "backlog" |
+| `generic` | Fallback for broad queries | (no keyword match, or multi-domain) |
+
+The classifier is bilingual (Portuguese and English), reflecting the platform's origin at Arremate Arte. Multi-word keywords (e.g., "cold start", "dead letter") score +2 while single-word keywords score +1. The highest-scoring category wins; ties default to `generic`.
+
+**Algorithm:**
+
+```typescript
+function classifyQuery(query: string): ResponseCategory {
+  // 1. Normalize to lowercase, trim
+  // 2. Check exact greeting patterns → return "greeting"
+  // 3. Score each category by keyword matches
+  //    - Multi-word keywords: +2 per match
+  //    - Single-word keywords: +1 per match
+  // 4. Return highest-scoring category, or "generic" if no matches
+}
+```
+
+### 4.14.2 Skill-to-Category Mapping
+
+The eval framework maps skills to classifier categories through their declared tools. Each tool has a known category:
+
+```text
+describe_eks_cluster        → kubernetes
+describe_rds                → database
+list_lambdas                → lambda
+get_lambda_details          → lambda
+search_cloudwatch_logs      → logs
+list_sqs_queues             → sqs
+get_sqs_attributes          → sqs
+list_open_prs               → pull_requests
+get_pr_details              → pull_requests
+recent_commits              → pull_requests
+```
+
+A skill that spans 3 or more tool categories is classified as `generic`-only. This prevents false-positive triggers: `/health-check` uses EKS + RDS + Lambda + SQS + CloudWatch (5 categories), so it should only trigger on broad queries like "how is the infrastructure?", not on specific ones like "show me the pods".
+
+### 4.14.3 Eval Manifest Schema
+
+Eval manifests follow the standard AgentRun manifest pattern (`apiVersion: agentrun/v1`, `kind: Eval`):
+
+```yaml
+apiVersion: agentrun/v1
+kind: Eval
+metadata:
+  name: lambda-find
+spec:
+  target:
+    kind: Skill
+    name: lambda-find
+  triggerCases:
+    - query: "find the checkout lambda"
+      shouldTrigger: true
+    - query: "how is the database?"
+      shouldTrigger: false
+  executionCases:
+    - id: find-checkout
+      prompt: "find the checkout lambda"
+      expectations:
+        - type: tool_called
+          value: list_lambdas
+        - type: contains
+          value: checkout
+  config:
+    passThreshold: 0.8
+    maxBudgetPerCaseUsd: 0.20
+```
+
+**Expectation types:**
+
+| Type | Description |
+|------|------------|
+| `contains` | Response text includes the value |
+| `not_contains` | Response text does not include the value |
+| `tool_called` | The specified tool was invoked during execution |
+| `tool_not_called` | The specified tool was not invoked |
+| `matches_regex` | Response text matches the regex pattern |
+| `llm_judge` | An LLM evaluates the response against the value as criteria |
+
+### 4.14.4 Two-Phase Evaluation
+
+**Phase 1: Trigger Eval (instant, no LLM)**
+
+For each trigger case, the framework calls `classifyQuery(query)`, checks whether the resulting category matches the skill's categories, and compares against `shouldTrigger`. This phase runs locally, requires no AWS credentials, and completes in milliseconds.
+
+```bash
+agentrun eval .claude/infrabot --mode trigger
+
+✓ health-check    trigger: 16/16 (100%)
+✓ lambda-find     trigger: 14/14 (100%)
+✓ dlq-alert       trigger: 12/12 (100%)
+✓ deploy-status   trigger: 12/12 (100%)
+
+4 evals, 4 passed, 0 failed (threshold: 80%)
+```
+
+**Phase 2: Execution Eval (requires runtime)**
+
+Execution cases invoke the actual skill against live infrastructure, applying expectations against the response. This phase requires AWS credentials and Bedrock access. It is currently deferred in the CLI (`"skipped -- execution eval requires AWS runtime"`), designed to run in CI or Lambda contexts where the runtime is available.
+
+### 4.14.5 Design Rationale
+
+The eval framework addresses a real problem: when adding new keywords to the classifier or adjusting category boundaries, it is easy to introduce regressions that cause skills to fire on the wrong queries. The trigger eval phase catches these regressions instantly during development:
+
+1. **Zero-cost validation**: Trigger eval uses pure keyword matching -- no LLM tokens, no API calls.
+2. **Manifest-driven**: Test cases live in YAML alongside the skills they test, not in separate test suites.
+3. **CI-ready**: `agentrun eval --json` returns structured results with exit code 1 on failure, making it suitable for CI gates.
+4. **Incremental**: Adding a new skill only requires a new eval YAML file -- no test infrastructure changes.
+
+The separation into trigger and execution phases is deliberate. Trigger accuracy (does the right skill activate?) can be validated hundreds of times per second locally. Execution correctness (does the skill return the right data?) requires live infrastructure and is tested less frequently, typically in staging environments.
+
+---
+
+## 4.15 Conclusion
+
+AgentRun's software engineering reflects a central principle: declare
+intentions, not procedures. YAML manifests declare what to do; the
+design patterns in the core determine how to do it; and the pack system allows
+teams to extend where to do it -- all without modifying the core.
+
+The classic patterns (Strategy, Factory, Chain of Responsibility, Observer,
+Template Method, Decorator) were not adopted for academic reasons, but out of
+practical necessity: multiple channels require Strategy; multiple tool types
+require Factory; multiple identity sources require Chain; security and
+auditing require Observer.
+
+The most impactful decision was hybrid execution (Agent Runner + Direct Executor).
+Deterministic skills execute 3-5x faster and 5x cheaper when they do not
+need adaptive reasoning. The Orchestrator selects the mode automatically
+-- the user does not need to know which mechanism is in action.
+
+The open-source extraction (section 4.12) demonstrates that internal platforms
+can evolve into reusable products when the architecture correctly separates the
+generic core (orchestration, providers, manifests) from specific context
+(packs, config, custom tools). The CLI (section 4.13) ensures a single source of truth for manifest validation, and the eval framework (section 4.14) provides a zero-cost regression safety net for skill routing.
+
+Finally, the Go Bridge demonstrates that selective polyglotism is valid: when the requirement (single binary, instant startup, native keychain) does not fit the main runtime, using the right tool for the job compensates for the cost of maintaining two runtimes.
+
+This chapter described how AgentRun is built at the component level. The next chapter raises the perspective to the system level: how components connect in production, how they scale, and how the architecture evolved in response to real problems.
 
 *Next chapter: Chapter 5 -- System Design.*
 
@@ -4787,7 +4927,7 @@ The `author`, `tags`, `license`, `repository`, and `dependencies` fields are all
 
 #### 5.10.3.3 Publishing
 
-The publishing flow is governed by the CLI (section 4.12):
+The publishing flow is governed by the CLI (section 4.13):
 
 ```text
 agentrun pack publish <dir> --bucket <bucket>
@@ -5105,7 +5245,8 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *BootstrapSecretProvider* | Platform interface for loading secrets at startup (cold start). AWS implementation: `SmBootstrapProvider` (Secrets Manager). |
 | *Bridge* | Go binary that connects Claude Code to the MCP Server. Acts as a stdin/stdout proxy for JSON-RPC via HTTP, with OAuth authentication and token storage in the OS *keychain*. |
 | *Catalog* | Component that discovers, validates, and registers YAML manifests at initialization time, forming the registry of available tools, workflows, use-cases, and skills. |
-| CLI | AgentRun's *Command-Line Interface* (`agentrun-cli`). Standalone tool that validates manifests, syncs packs to S3, and manages the Pack Registry. Shares the same Zod schemas as the runtime, eliminating duplication. |
+| *classifyQuery* | Pure function in `@agentrun-ai/core` that categorizes natural language queries into `ResponseCategory` values using bilingual keyword matching (Portuguese + English). Used by the Orchestrator for skill routing and by the eval framework for trigger validation. |
+| CLI | AgentRun's *Command-Line Interface* (`agentrun-cli`). Standalone tool that validates manifests, syncs packs to S3, manages the Pack Registry, and runs eval suites. Shares the same Zod schemas as the runtime, eliminating duplication. |
 | *Channel Adapter* | Design pattern that translates each channel's native protocol (Slack, CLI, REST API) to a uniform internal structure (*ChannelContext*), decoupling the user interface from business logic. |
 | *ChannelContext* | Channel-agnostic DTO that carries userId, message text, sessionId, and response callback. Produced by the *Channel Adapter* and consumed by the *Orchestrator*. |
 | *checksum* | Cryptographic hash (SHA256) used to verify binary integrity during *Bridge* updates. |
@@ -5116,6 +5257,7 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *Dead Letter Queue* (DLQ) | SQS queue that receives messages that failed after the maximum number of processing attempts, enabling *post-mortem* investigation. |
 | *Device Flow* | OAuth flow (RFC 8628) designed for CLIs and devices without an integrated browser, where the user authorizes access in a separate browser by entering a code. |
 | *Direct Executor* | Executor that calls tool handlers directly, without Agent SDK intermediation, followed by a single LLM call for summarization. Suited for deterministic skills. |
+| *Eval* | Manifest kind (`kind: Eval`) that declares test cases for skill routing validation. Supports two phases: *trigger eval* (instant keyword matching) and *execution eval* (live infrastructure). Six expectation types: `contains`, `not_contains`, `tool_called`, `tool_not_called`, `matches_regex`, `llm_judge`. |
 | DynamoDB | AWS NoSQL database service used by AgentRun for conversation sessions, usage tracking, and API key registration. |
 | *Factory* | Design pattern that centralizes object creation (tools, handlers), ensuring different types are instantiated by the correct factory. |
 | *guardrail* | Automatic protection mechanism that restricts the AI agent's behavior, such as blocking dangerous tools or session cost limits. |
@@ -5142,6 +5284,7 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *PlatformRegistry* | Singleton that stores and serves instances of the 7 provider interfaces (`LlmProvider`, `CredentialProvider`, `SessionStore`, `UsageStore`, `ManifestStore`, `QueueProvider`, `BootstrapSecretProvider`). Initialized at bootstrap and accessed by the entire platform core. |
 | RBAC | *Role-Based Access Control*. Access control model based on roles. AgentRun defines extensible roles via `PlatformConfig` -- the *well-known* ones (`viewer`, `executive`, `developer`, `tech_lead`, `platform`) cover common scenarios, but organizations can add custom roles without modifying code. |
 | *read-only* | AgentRun's architectural principle: the platform observes infrastructure but never modifies it, eliminating entire categories of risk. |
+| *ResponseCategory* | Enum returned by `classifyQuery()`: `greeting`, `lambda`, `kubernetes`, `database`, `logs`, `pull_requests`, `metrics`, `sqs`, `generic`. Determines which skill the Orchestrator selects for a given query. |
 | *QueueProvider* | Platform interface for asynchronous message dispatch. AWS implementation: `SqsQueueProvider` (SQS). |
 | *scope* | Parameter that filters which tools are exposed to the MCP client, organizing them by domain (`aws`, `github`, `jira`). |
 | *skill* | Pre-built prompt with tool list and output format, executable as a slash command. Supports `direct` (deterministic) or `agent` (agentic) mode. |
@@ -5151,7 +5294,7 @@ Recurring technical terms in this book, organized in alphabetical order.
 | SQS | *Simple Queue Service*. AWS queue service used to decouple ingestion (Command Lambda) from processing (Process Lambda). |
 | *tool* | Atomic capability registered in the catalog. Native types (`mcp-server`) have TypeScript handlers; declarative types (`aws-sdk`, `http`, `lambda`) register only access config and are invoked via workflow steps. |
 | *UsageStore* | Platform interface for tracking token consumption per user. AWS implementation: `DynamoUsageStore` (DynamoDB). |
-| *use-case* | User intent mapped by keywords to a set of workflows. Allows the Orchestrator to classify natural language queries. |
+| *use-case* | User intent mapped by keywords to a set of workflows. The `classifyQuery()` function (see section 4.14.1) determines the *ResponseCategory*, which the Orchestrator maps to the appropriate use-case. |
 | *warm-start* | Lambda function invocation that reuses an already-initialized runtime, with HTTP clients and in-memory caches preserved. |
 | *workflow* | Composition of tools to achieve a goal. Two modes: *flat* (tool list for RBAC) or *step-based* (deterministic pipeline with `steps[]`). Workflows with steps are auto-registered as invocable MCP tools. |
 | *workflow step* | Sequential execution unit within a workflow. Defines `tool` (capability), `action` (operation), `input` (with `{{ }}` interpolation), `outputTransform` (JMESPath), and `timeoutMs`. Steps can chain results via `{{ steps.X.result }}`. |
