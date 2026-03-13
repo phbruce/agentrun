@@ -174,11 +174,13 @@ flowchart TB
 
 With the governance model established, the next question is how to organize the platform so that frequent changes do not compromise the stability of the core. AgentRun adopts a three-layer model with clearly defined responsibilities. Each layer has its own artifacts, deployment cycle, and owners.
 
+> **Reference implementations**: This book uses Slack (messaging) and GitHub (identity) as the reference channel and identity source. The platform's `ChannelAdapter` and `IdentityProvider` interfaces support any messaging platform (Google Chat, Microsoft Teams, Discord) and identity provider (Okta, Google Workspace, LDAP) without code changes to the core.
+
 ### 1.2.1 Layer 1: Core Runtime
 
 The runtime is the immutable core of the platform. It includes:
 
-- *Command Handler*: receives requests from channels (Slack, API), validates identity, and enqueues for processing.
+- *Command Handler*: receives requests from channels (Slack, Google Chat, API), validates identity, and enqueues for processing.
 - *Process Handler*: consumes the queue, loads manifests, executes tools, and returns responses.
 - *MCP Server*: exposes tools as JSON-RPC endpoints for MCP clients (Claude Code, IDEs).
 - *Catalog Loader*: discovers and validates YAML manifests at initialization time.
@@ -408,7 +410,7 @@ spec:
 
 ### 1.5.3 Identity Resolution Chain
 
-When a user interacts with AgentRun, the identity goes through a resolution chain:
+When a user interacts with AgentRun, the identity goes through a resolution chain. The steps below use the reference implementation (Slack + GitHub), but the `IdentityProvider` interface supports any identity source (Okta, Google Workspace, LDAP) by implementing the same `resolve()` contract:
 
 | Step | Description |
 |------|-------------|
@@ -945,7 +947,7 @@ With threats mapped, the first control to implement is authentication: confirmin
 
 ### 2.2.1 GitHub OAuth Device Flow (Bridge / MCP)
 
-The primary channel uses *GitHub OAuth Device Flow* (RFC 8628), ideal for CLIs where the user may not have a browser on the same machine.
+The reference implementation uses *GitHub OAuth Device Flow* (RFC 8628), ideal for CLIs where the user may not have a browser on the same machine. Alternative identity providers (Okta, Google Workspace, LDAP) can replace this flow by implementing the `IdentityProvider` interface.
 
 Figure 2.2 -- OAuth Device Flow authentication flow.
 
@@ -1023,8 +1025,7 @@ minutes (*replay protection*).
 
 ### 2.2.4 Identity Resolution in the MCP Server
 
-The MCP server receives `Authorization: Bearer <token>`, validates against GitHub
-`/user`, and maps the login to a role via the user registry:
+In the reference implementation, the MCP server receives `Authorization: Bearer <token>`, validates against GitHub `/user`, and maps the login to a role via the user registry. Alternative identity providers follow the same pattern with their own token validation endpoint:
 
 ```text
 Token -> GitHub /user -> { login: "dev-user" } -> User Registry -> role: "developer"
@@ -2407,10 +2408,10 @@ which execution mechanism will be used.
 
 ### 4.2.3 Chain of Responsibility -- Identity Resolution
 
-The user's identity is resolved through a provider with internal chain logic. A single `IdentityProvider` is set via `setIdentityProvider()`, and the provider internally follows a resolution strategy: check the static registry first, then derive from external sources (e.g., GitHub teams), with a readonly fallback.
+The user's identity is resolved through a provider with internal chain logic. A single `IdentityProvider` is set via `setIdentityProvider()`, and the provider internally follows a resolution strategy: check the static registry first, then derive from external sources (e.g., organization teams), with a readonly fallback. The example below shows the reference `GitHubTokenProvider`; alternative providers (Okta, Google Workspace, LDAP) implement the same `IdentityProvider` interface with their own resolution steps.
 
 ```typescript
-// Single provider with internal chain logic
+// Reference implementation: GitHub-based identity resolution
 class GitHubTokenProvider implements IdentityProvider {
   async resolve(ctx: ChannelContext): Promise<Identity> {
     // 1. Check static registry (fast, zero external I/O)
@@ -2782,6 +2783,7 @@ Figure 4.3 -- Channel Adapter pattern.
 ```mermaid
 flowchart LR
     SL[Slack] --> SA[SlackAdapter] --> OR[Orchestrator]
+    GC[Google Chat] --> GA[GoogleChatAdapter] --> OR
     CC[Claude Code CLI] --> BR["Bridge (Go)\nJSON-RPC -> HTTP"]
     BR --> MA[MCPAdapter] --> OR
     CC -.->|stdin/stdout| BR
@@ -2789,7 +2791,7 @@ flowchart LR
 
 Each adapter converts the channel's native format into a uniform `ChannelContext`.
 The Orchestrator always receives the same DTO, regardless of whether the user is in Slack,
-the terminal, or any future channel.
+Google Chat, the terminal, or any future channel. Slack and Google Chat are reference implementations; any messaging platform can be added by implementing the `ChannelAdapter` interface.
 
 ### 4.4.2 ChannelContext as Agnostic DTO
 
@@ -2801,11 +2803,10 @@ The `ChannelContext` carries only the minimum necessary to process the request:
 | `channelId` | string   | Channel/room where the message came from     |
 | `threadId`  | string   | Thread for maintaining conversational context|
 | `text`      | string   | User's message text                          |
-| `source`    | enum     | Originating channel (slack, cli, mcp)        |
+| `source`    | enum     | Originating channel (slack, google_chat, cli, mcp, ...) |
 | `metadata`  | object   | Channel-specific extra data                  |
 
-The `source` field is used only for formatting decisions (Slack supports Markdown
-with blocks; CLI accepts plain text). Business logic never branches by channel.
+The `source` field is used only for formatting decisions (Slack and Google Chat support rich blocks; CLI accepts plain text). Business logic never branches by channel.
 
 ### 4.4.3 MCP Server as HTTP Channel
 
@@ -4009,7 +4010,7 @@ AgentRun enables engineers to query the state of their infrastructure using natu
 
 AgentRun's architecture was designed around three principles:
 
-1. *Multi-client* by design: any interface (Slack, Claude Code, Discord, Microsoft Teams) shares the same tool layer and business logic.
+1. *Multi-client* by design: any interface (Slack, Google Chat, Claude Code, Discord, Microsoft Teams) shares the same tool layer and business logic.
 2. *Stateless-handler-first*: all workloads are designed as stateless handlers. The reference deployment uses AWS Lambda, but the provider pattern supports alternative compute backends.
 3. Extensibility via manifests: new capabilities are added through declarative YAML files, without requiring code deployment.
 
@@ -4021,6 +4022,7 @@ Figure 5.1 -- Four-layer architecture overview.
 flowchart TB
     subgraph CLIENTS["CLIENT LAYER"]
         Slack["Slack"]
+        GoogleChat["Google Chat"]
         ClaudeCode["Claude Code"]
         Future["Future clients"]
     end
@@ -4084,7 +4086,7 @@ AgentRun implements the *Channel Adapter* pattern, where each client has an adap
 // Canonical structure that all adapters produce
 interface ChannelContext {
   userId: string;
-  source: "slack" | "github" | "apikey";
+  source: "slack" | "google_chat" | "github" | "apikey";
   query: string;
   sessionId: string;           // unique conversation identifier
   respondFn: (text: string) => Promise<void>;  // response callback
@@ -4093,12 +4095,12 @@ interface ChannelContext {
 
 Each adapter is responsible for:
 
-1. Authenticating the user in the native protocol (Slack token, GitHub OAuth, API key).
+1. Authenticating the user in the native protocol (Slack token, Google Chat JWT, GitHub OAuth, API key).
 2. Resolving the identity to an internal `Role`.
 3. Building the `ChannelContext`.
 4. Delivering to the Orchestrator.
 
-Figure 5.2 -- Slack and Claude Code paths.
+Figure 5.2 -- Reference paths: Slack (async) and Claude Code (sync). Google Chat, Discord, and Microsoft Teams follow the same async pattern as Slack.
 
 ```mermaid
 flowchart TB
@@ -4410,7 +4412,7 @@ Step   Component            Action
  15    Claude Code          Synthesizes results and presents to user
 ```
 
-The fundamental difference: in the Slack path, the intelligence (orchestration, classification, summarization) resides in the Process Handler. In the Claude Code path, the intelligence resides in Claude Code itself -- the MCP Server is just an authenticated proxy for the tool handlers.
+The fundamental difference: in the chat path (Slack, Google Chat, or any async adapter), the intelligence (orchestration, classification, summarization) resides in the Process Handler. In the Claude Code path, the intelligence resides in Claude Code itself -- the MCP Server is just an authenticated proxy for the tool handlers.
 
 ---
 
@@ -5376,15 +5378,15 @@ detects:
 
 AgentRun's system design is governed by four central architectural decisions:
 
-1. Ingestion/processing separation via message queue: enables meeting Slack's 3-second timeout without sacrificing the time needed for AI processing (5-30 seconds).
+1. Ingestion/processing separation via message queue: enables meeting chat platform timeouts (e.g., Slack's 3-second limit) without sacrificing the time needed for AI processing (5-30 seconds).
 
-2. *Channel Adapter pattern*: decouples the user interface from business logic, allowing Slack and Claude Code (and future clients) to share the same tool layer.
+2. *Channel Adapter pattern*: decouples the user interface from business logic, allowing Slack, Google Chat, Claude Code (and future clients) to share the same tool layer.
 
 3. Two-stage catalog loading: the *core bundle* ensures the platform always works (even without S3), while remote packs enable extensibility without deployment.
 
 4. *Dual execution model* (Agent + Direct): deterministic skills execute 3-5x faster via Direct Executor, while open-ended queries can still use the Agent SDK's full loop.
 
-These decisions were not made a priori -- they emerged from solving real production problems: Slack's timeout motivated SQS, token cost motivated scope filtering, skill latency motivated the Direct Executor, and the need for extensibility without deployment motivated the pack system with cache and fallback.
+These decisions were not made a priori -- they emerged from solving real production problems: chat platform timeouts (Slack, Google Chat) motivated SQS, token cost motivated scope filtering, skill latency motivated the Direct Executor, and the need for extensibility without deployment motivated the pack system with cache and fallback.
 
 The platform's extensibility is completed with three recent additions: the *AgentRun CLI* eliminates CI-specific dependencies for pack validation and publishing; the *Pack Marketplace* adds discovery, metadata, and dependency resolution over the existing S3 bucket; and the *A2A/MCP skeleton* positions the platform to absorb protocol evolutions without fundamental rewrites.
 
@@ -5488,11 +5490,11 @@ This foundation is not decorative. Without it, an AI-powered observability platf
 
 ## The Technical Execution
 
-The two final chapters -- software engineering and system design -- show how the foundation of trust materializes in code. Six classic *design patterns* solve concrete problems: *Strategy* decouples channels and platform providers, *Factory* decouples tool types, *Chain of Responsibility* resolves identities, *Observer* intercepts executions for auditing and security, *Template Method* structures the Orchestrator flow, and *Decorator* overlays RBAC and scope filters. The *Platform Abstraction Layer* and `PlatformRegistry` ensure that AgentRun's core is vendor-agnostic -- the 10 provider interfaces (7 core + 3 optional RAG-specific) allow swapping LLM, sessions, credentials, storage, and knowledge base without changing a single line of core code.
+The two final chapters -- software engineering and system design -- show how the foundation of trust materializes in code. Six classic *design patterns* solve concrete problems: *Strategy* decouples channels (Slack, Google Chat, CLI, and any future adapter) and platform providers, *Factory* decouples tool types, *Chain of Responsibility* resolves identities (via GitHub, Okta, or any `IdentityProvider` implementation), *Observer* intercepts executions for auditing and security, *Template Method* structures the Orchestrator flow, and *Decorator* overlays RBAC and scope filters. The *Platform Abstraction Layer* and `PlatformRegistry` ensure that AgentRun's core is vendor-agnostic -- the 10 provider interfaces (7 core + 3 optional RAG-specific) allow swapping LLM, sessions, credentials, storage, and knowledge base without changing a single line of core code.
 
 The hybrid execution decision is perhaps the most impactful: skills with fixed tool sequences execute 3-5x faster and 5x cheaper via *Direct Executor*, while open-ended queries still use the complete agentic loop. The Orchestrator selects the mode automatically -- the user does not need to know which mechanism is in action.
 
-At the system level, the ingestion/processing separation via message queue resolves the fundamental conflict between Slack's 3-second timeout and AI processing time. The two-stage catalog loading ensures the platform works even when S3 is unavailable. And the pack system enables extensibility without deployment, without rewriting, without central coordination.
+At the system level, the ingestion/processing separation via message queue resolves the fundamental conflict between chat platform timeouts (Slack's 3-second limit, Google Chat's similar constraint) and AI processing time. The two-stage catalog loading ensures the platform works even when S3 is unavailable. And the pack system enables extensibility without deployment, without rewriting, without central coordination.
 
 ---
 
