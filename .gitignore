@@ -8,3 +8,4 @@ dist/
 coverage/
 *.tgz
 .pack-output/
+.workplan.md

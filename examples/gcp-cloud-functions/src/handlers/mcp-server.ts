@@ -71,7 +71,7 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
 
         let identity;
         try {
-            identity = await githubProvider.resolve(token);
+            identity = await githubProvider.resolve(token, "github");
         } catch (err: any) {
             const msg = err.message.includes("not a member")
                 ? `${err.message}. Request access from the org admin.`

@@ -53,6 +53,7 @@ export { loadPlatformConfig, buildDefaultConfig } from "./platform/config.js";
 
 // Channel types
 export type {
+    FormatMode,
     ChannelContext,
     ChannelAdapter,
 } from "./channels/types.js";
