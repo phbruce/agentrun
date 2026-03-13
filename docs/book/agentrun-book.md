@@ -67,6 +67,11 @@ The book's structure follows a progression from "why" to "how": it begins with g
 - 4.9 Direct Executor vs Agent Runner
 - 4.10 Trade-off Decisions
 - 4.11 Historical Notes
+  - 4.11.1 Platform Timeline
+  - 4.11.2 Architectural Decision Records (ADR 1-6)
+  - 4.11.3 Features Tried and Abandoned
+  - 4.11.4 SQS Max Concurrency
+  - 4.11.5 The Feb 21 Sprint
 - 4.12 Open-Source Extraction
 - 4.13 AgentRun CLI
 - 4.14 Eval Framework
@@ -3498,29 +3503,166 @@ to the same endpoint.
 
 ## 4.11 Historical Notes
 
-### 4.11.1 IAM Auth to Secrets Manager Revert (March 2026)
+This section records architectural decisions, reversals, and evolution milestones that shaped AgentRun. Many of these events exist only in commit messages and would be lost without explicit documentation.
 
-The migration of Lambda-RDS authentication from Secrets Manager (password) to
-IAM tokens was completed in February 2026, creating 100 individual PostgreSQL
-users (`lambda_XXXXXXXX`). However, the combination of `SELECT FOR UPDATE`
-with S3 I/O inside transactions caused lock contention (`Lock:tuple` peak 1.1).
-IAM token generation per pool connection added latency, worsening timeouts:
-16/24 upload invocations failed with 10s timeout, generating 192 DLQ messages.
+### 4.11.1 Platform Timeline
 
-Decision: revert to Secrets Manager with a shared DB user and increase
-the upload lambda timeout to 30s. The 100 individual users were deleted and
-Terraform states cleaned via S3.
+```text
+Phase 0 — Foundation (Jan 2026)
+  Jan 27   Terragrunt infrastructure for lambda deployments
+  Jan 28   All 102 lambdas migrated to Terragrunt + Atlantis
+  Jan 31   IAM auth migration begins (later reverted)
 
-Lesson: per-request authentication (IAM token) interacts poorly with operations
-that hold locks indefinitely. For workloads with long transactions, per-pool
-authentication (password via Secrets Manager) is more appropriate.
+Phase 1 — InfraBot Genesis (Feb 12, 2026)
+  Feb 12   InfraBot born in private API monorepo repo
+           First commit: Agent SDK + Slack integration
+           Same day: infra moved to private IaC repo via Terragrunt
+  Feb 20   Claude Code CLI Layer for Agent SDK subprocess
+           Key learning: Agent SDK on Lambda requires HOME=/tmp
 
-### 4.11.2 SQS Max Concurrency
+Phase 2 — Slack UX Sprint (Feb 21, 2026)
+  Feb 21   ~30 commits in a single day:
+           Block Kit formatter, mrkdwn converter, anti-slop system prompt
+           Rich text iteration: mrkdwn → rich_text → back to mrkdwn
+           Greeting with dropdown workflow selector
+           Token usage tracking (DynamoDB), session per Slack thread
+           Jira tools added (6 tools for issue tracking)
+           Bot avatar: robot emoji → custom avatar → Twemoji CDN → removed
 
-SQS-triggered Lambdas now use `maximum_concurrency` in the
-`event_source_mapping` to control the maximum number of simultaneous
-invocations per queue, preventing RDS Proxy saturation during async
-processing spikes.
+Phase 3 — Direct Execution & Security (Feb 22-23, 2026)
+  Feb 22   Slack interaction payloads, Bedrock Sonnet marketplace perms
+  Feb 23   Direct skill execution mode (mode: direct)
+           Breakthrough: SdkMcpToolDefinition.handler is public API
+           → call .handler(args, null) directly, zero tool file changes
+  Feb 24   DM-only writes + IAM per RBAC role
+
+Phase 4 — Multi-Client Platform (Feb 24-25, 2026)
+  Feb 24   Pack system, DynamoDB api-keys table, S3 manifests bucket
+           MCP Server Lambda registered alongside Slack
+  Feb 25   Auth migration: API key → GitHub token identity
+           MCP split into 3 scoped servers (aws, github, jira)
+           Claude Code skills unified with Slack skills
+
+Phase 5 — Platform Abstraction & RAG (Feb 26-28, 2026)
+  Feb 26   InfraBot platform book written (5 chapters, glossary, epilogue)
+  Feb 27   Declarative billing tools added as aws-sdk type
+  Feb 28   Billing tools refactored into workflow steps
+           → Workflow step engine was born from this refactoring
+           Vendor-agnostic platform abstraction (7 → 10 provider interfaces)
+           CLI + Pack Marketplace + A2A/MCP protocol skeleton (single commit)
+           RAG system with pgvector + Bedrock embeddings
+           → 4 rapid bugfixes: Data API serialization, error handling,
+             config loading, lazy-load AWS SDK
+
+Phase 6 — AgentRun Extraction (Mar 1-4, 2026)
+  Mar 1    Schema consolidation + automated CLI deploy
+  Mar 2    INFRABOT_* env vars renamed to AGENTRUN_*
+           → Required 4 sequential PRs: each fix revealed the next issue
+  Mar 2    18 tool manifests in private IaC repo pack (.claude/infrabot/tools/*.yaml)
+  Mar 4    Migration to npm packages (@agentrun-oss/*)
+           Go binary bridge renamed infrabot-bridge → agentrun-bridge
+
+Phase 7 — Public Release (Mar 5, 2026)
+  Mar 5    phbruce/agentrun repo created (single initial commit)
+           @agentrun-oss/* packages v0.2.0/0.2.1 published to npm
+           Bedrock Knowledge Base module deployed in private IaC repo
+           Daily docs sync to Bedrock KB (CI workflow)
+
+Phase 8 — Scope Rename & Eval (Mar 7-13, 2026)
+  Mar 7    @agentrun-oss → @agentrun-ai across 72 files
+           npm org agentrun-oss deleted (permanent, npm policy)
+           Eval framework added (EvalManifestSchema, EvalDef types)
+  Mar 8    Eval CLI rewritten: classifyQuery directly, no LLM subprocess
+  Mar 9    MCP servers migrated from stdio bridge to direct HTTP
+           Go bridge lived only 12 days (Feb 25 → Mar 9)
+  Mar 12   API Gateway auto-create path segments (lambda-module v2.7.0)
+  Mar 13   Node 18 dropped from CI (AWS SDK requires >=20)
+           Book overhauled: de-Lambda-ization, code drift fixes
+```
+
+### 4.11.2 Architectural Decision Records
+
+#### ADR-1: Agent SDK Subprocess → Direct Execution (Feb 23)
+
+The initial architecture launched Claude Code Agent SDK as a subprocess on every request. This added cold start latency and required a Lambda Layer with the full `@anthropic-ai/claude-code` package (38MB).
+
+On February 23, direct execution mode was discovered: `SdkMcpToolDefinition.handler` is a public method that can be called directly — `handler(args, null)` — without spawning a subprocess. This eliminated the Agent SDK overhead for deterministic skills, reducing execution time from seconds to milliseconds.
+
+**Decision**: Skills with `mode: direct` call tool handlers directly, followed by a single LLM summarization call. Only complex queries use the full Agent Runner loop.
+
+**Impact**: 3-5x faster execution, 5x lower cost for deterministic skills.
+
+#### ADR-2: Authentication Evolution (3 stages)
+
+| Stage | Date | Mechanism | Why Changed |
+|-------|------|-----------|-------------|
+| 1 | Feb 12 | Secrets Manager (hardcoded) | Initial prototype |
+| 2 | Feb 25 | API key → GitHub token identity | API keys don't carry identity context for RBAC |
+| 3 | Mar 9 | Go bridge with Device Flow → direct HTTP | Bridge added complexity; MCP Streamable HTTP eliminated the need for stdio proxy |
+
+The Go binary bridge existed for only 12 days. It was built to solve the stdin/stdout transport requirement for Claude Code MCP integration, but when Streamable HTTP became available, direct HTTP replaced it. The bridge remains in the repository for environments where stdin/stdout transport is preferred.
+
+#### ADR-3: IAM Auth Revert (Mar 3)
+
+The migration from Secrets Manager to IAM tokens for Lambda-RDS authentication was completed in February 2026, creating 100 individual PostgreSQL users (`lambda_XXXXXXXX`). However, the combination of `SELECT FOR UPDATE` with S3 I/O inside transactions caused lock contention (`Lock:tuple` peak 1.1). IAM token generation per pool connection added latency, worsening timeouts: 16/24 upload invocations failed with 10s timeout, generating 192 DLQ messages.
+
+**Decision**: Revert to Secrets Manager with a shared DB user (`shared-api-user`) and increase the upload handler timeout to 30s. The 100 individual users were deleted and Terraform states cleaned via S3.
+
+**Lesson**: Per-request authentication (IAM token) interacts poorly with operations that hold locks across I/O boundaries. For workloads with long transactions, per-pool authentication (password) is more appropriate.
+
+#### ADR-4: Workflow Engine Was Not Designed Upfront (Feb 27-28)
+
+The workflow step engine was born from a concrete need: billing tools required orchestrating multiple AWS SDK calls in sequence (get cost data → format → summarize). The initial approach (Feb 27) created individual `aws-sdk` type tools. The next day, these were refactored into workflow steps with JMESPath transforms and `{{ }}` interpolation.
+
+**Lesson**: The most durable abstractions emerge from refactoring real use cases, not from upfront design.
+
+#### ADR-5: npm Scope Rename — Permanent Decision (Mar 7)
+
+The npm organization `agentrun-oss` was deleted to consolidate under `agentrun-ai`. npm does not allow recreating deleted organizations (permanent policy). All 8 packages were republished under the new scope. Any documentation or dependency referencing `@agentrun-oss/*` is permanently broken.
+
+#### ADR-6: Packaging Evolution (4 stages)
+
+```text
+Feb 12 — Inline code in private API monorepo
+         (tight coupling, no reuse possible)
+           ↓
+Mar 2  — Vendor tgz packages in S3
+         (decoupled but manual artifact management)
+           ↓
+Mar 4  — npm @agentrun-oss/* packages
+         (standard distribution, version pinning)
+           ↓
+Mar 7  — npm @agentrun-ai/* packages
+         (scope rename, permanent)
+```
+
+Each transition was driven by a concrete problem: inline code couldn't be shared across repos; vendor tgz required manual S3 uploads; the original npm scope didn't reflect the project name.
+
+### 4.11.3 Features Tried and Abandoned
+
+| Feature | Added | Removed | Reason |
+|---------|-------|---------|--------|
+| Rich text blocks for Slack | Feb 22 | Feb 22 | Multiple format cycles (mrkdwn → rich_text → pure rich_text → mrkdwn); mrkdwn was more reliable across Slack clients |
+| Bot avatar in message footer | Feb 21 | Feb 21 | Tried robot emoji, custom gentleman avatar, Twemoji CDN; all added noise without value. Removed same day |
+| API key authentication | Feb 24 | Feb 25 | API keys don't carry identity context; replaced by GitHub token identity for RBAC |
+| Per-lambda PostgreSQL users | Feb 8 | Mar 3 | 100 users created, all deleted. Lock contention under IAM auth (ADR-3) |
+| stdio Go bridge for MCP | Feb 25 | Mar 9 | Replaced by direct HTTP; Streamable HTTP eliminated the need for stdin/stdout proxy |
+| Old JSON eval files | Feb 23 | Mar 7 | Replaced by YAML eval manifests in the eval framework |
+| Dummy test lambdas (AccountPingGet) | Mar 12 | Mar 13 | Created for pipeline testing, destroyed after validation |
+
+### 4.11.4 SQS Max Concurrency
+
+SQS-triggered handlers now use `maximum_concurrency` in the `event_source_mapping` to control the maximum number of simultaneous invocations per queue, preventing RDS Proxy saturation during async processing spikes.
+
+### 4.11.5 The Feb 21 Sprint
+
+The entire Slack UX layer — Block Kit formatting, mrkdwn conversion, greeting workflow, session management, usage tracking, and Jira integration — was built in a single day (~30 commits). This sprint established the interaction patterns that still define the platform's user experience. The velocity was possible because the foundational Agent SDK integration (Phase 1) had already stabilized, allowing the team to focus purely on presentation and interaction design.
+
+Notable decisions made under time pressure that survived:
+- Anti-slop system prompt rules ("ZERO emojis. Nenhum. Sem exceções.")
+- Session per Slack thread (DynamoDB, TTL 7 days)
+- Bilingual system prompt (Portuguese + English keywords)
+- Dropdown-based workflow selector in greeting messages
 
 ---
 
