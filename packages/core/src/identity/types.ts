@@ -12,5 +12,5 @@ export interface ResolvedIdentity {
 }
 
 export interface IdentityProvider {
-    resolve(externalId: string, source?: IdentitySource): Promise<ResolvedIdentity>;
+    resolve(externalId: string, source: IdentitySource): Promise<ResolvedIdentity>;
 }

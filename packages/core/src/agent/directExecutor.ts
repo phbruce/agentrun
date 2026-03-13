@@ -11,6 +11,7 @@ import type { AwsClients } from "../mcp/clientFactory.js";
 import { loadCatalogForPacks } from "../catalog/packLoader.js";
 import { hydrateDeclarativeTool, hydrateWorkflowAsTools } from "../mcp/declarative.js";
 import { PlatformRegistry } from "../platform/registry.js";
+import type { IdentitySource } from "../rbac/types.js";
 
 interface ToolResult {
     toolName: string;
@@ -173,6 +174,7 @@ export async function processDirectSkill(
     skill: SkillDef,
     _args: string,
     userId: string,
+    source: IdentitySource,
     model: string,
 ): Promise<AgentResult> {
     const startTime = Date.now();
@@ -193,7 +195,7 @@ export async function processDirectSkill(
 
     try {
         // Resolve identity and create scoped clients
-        const identity = await getIdentityProvider().resolve(userId);
+        const identity = await getIdentityProvider().resolve(userId, source);
         let awsClients;
         try {
             awsClients = await createClientsForIdentity(identity);
@@ -210,7 +212,7 @@ export async function processDirectSkill(
         }));
 
         // 2. Single Bedrock call to summarize
-        const systemPrompt = buildSystemPrompt(userId);
+        const systemPrompt = buildSystemPrompt(userId, source);
         const { answer, inputTokens, outputTokens } = await summarizeToolResults(
             systemPrompt,
             skill.prompt,

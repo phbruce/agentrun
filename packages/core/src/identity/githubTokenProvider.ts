@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { createHash } from "crypto";
 import type { IdentityProvider, ResolvedIdentity } from "./types.js";
-import type { Role } from "../rbac/types.js";
+import type { IdentitySource, Role } from "../rbac/types.js";
 import { getUserProfile } from "../rbac/userRegistry.js";
 import { PlatformRegistry } from "../platform/registry.js";
 import { logger } from "../logger.js";
@@ -53,7 +53,7 @@ function getGitHubConfig(): { org: string; teamRoleMapping: Record<string, strin
 }
 
 export class GitHubTokenProvider implements IdentityProvider {
-    async resolve(token: string): Promise<ResolvedIdentity> {
+    async resolve(token: string, _source: IdentitySource): Promise<ResolvedIdentity> {
         // Check cache
         const key = cacheKey(token);
         const cached = identityCache.get(key);

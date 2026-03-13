@@ -35,14 +35,14 @@ function makeKey(externalId: string, source: IdentitySource): string {
     return `${source}:${externalId}`;
 }
 
-export function getUserProfile(userId: string, source: IdentitySource = "slack"): UserProfile | null {
+export function getUserProfile(userId: string, source: IdentitySource): UserProfile | null {
     return ensureLoaded().get(makeKey(userId, source)) ?? null;
 }
 
-export function getRoleForUser(userId: string, source: IdentitySource = "slack"): Role {
+export function getRoleForUser(userId: string, source: IdentitySource): Role {
     return ensureLoaded().get(makeKey(userId, source))?.role ?? "viewer";
 }
 
-export function getDisplayName(userId: string, source: IdentitySource = "slack"): string {
+export function getDisplayName(userId: string, source: IdentitySource): string {
     return ensureLoaded().get(makeKey(userId, source))?.name ?? "Usuário";
 }

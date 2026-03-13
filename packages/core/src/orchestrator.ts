@@ -95,7 +95,7 @@ export async function processRequest({ ctx, adapter }: ProcessRequestInput): Pro
             logger.info({ userId: ctx.userId, skill: skillMatch.skill.command, args: skillMatch.args }, "Orchestrator skill matched");
 
             const models = getModels();
-            const result = await processSkill(skillMatch.skill, skillMatch.args, ctx.userId, models.defaultModel, ctx.isPrivate);
+            const result = await processSkill(skillMatch.skill, skillMatch.args, ctx.userId, ctx.source, models.defaultModel, ctx.isPrivate);
 
             // Session management
             await saveMessage(ctx.sessionId, Date.now().toString(), "user", ctx.query, ctx.userId);
@@ -132,7 +132,7 @@ export async function processRequest({ ctx, adapter }: ProcessRequestInput): Pro
 
         await saveMessage(ctx.sessionId, Date.now().toString(), "user", ctx.query, ctx.userId);
 
-        const result = await processInfraQuery(prompt, ctx.userId, model, ctx.isPrivate);
+        const result = await processInfraQuery(prompt, ctx.userId, ctx.source, model, ctx.isPrivate);
 
         // Save assistant response
         saveMessage(ctx.sessionId, `${Date.now()}.1`, "assistant", result.answer, "bot").catch((err) =>

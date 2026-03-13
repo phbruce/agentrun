@@ -2,6 +2,8 @@
 import type { IdentitySource } from "../rbac/types.js";
 import type { AgentResult } from "../agent/agentRunner.js";
 
+export type FormatMode = "slack-mrkdwn" | "markdown" | "gchat-card" | "plain";
+
 export interface ChannelContext {
     requestId: string;
     sessionId: string;
