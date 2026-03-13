@@ -35,14 +35,14 @@ const CATEGORY_LABELS: Record<Exclude<ResponseCategory, "greeting">, string> = {
 // ---------------------------------------------------------------------------
 
 export async function formatGreeting(userId: string): Promise<any[]> {
-    const role = getRoleForUser(userId);
+    const role = getRoleForUser(userId, "slack");
     const useCases = getUseCasesForRole(role);
 
     // Header context blocks
     const headerBlocks: any[] = [];
 
     // 1. Profile: image + display name
-    const displayName = getDisplayName(userId);
+    const displayName = getDisplayName(userId, "slack");
     const profileElements: any[] = [];
 
     if (userId) {
@@ -156,7 +156,7 @@ export async function formatCategoryResponse(
     const contentBlocks = markdownToRichTextBlocks(answer);
 
     // Header: profile image + display name
-    const displayName = getDisplayName(userId || "");
+    const displayName = getDisplayName(userId || "", "slack");
     const profileElements: any[] = [];
 
     if (userId) {
