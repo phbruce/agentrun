@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { Role } from "../rbac/types.js";
+import type { IdentitySource, Role } from "../rbac/types.js";
+import type { FormatMode } from "../channels/types.js";
 import { getRoleConfigs, VIEWS_SECTION } from "../rbac/roleConfig.js";
 import { getDisplayName, getRoleForUser } from "../rbac/userRegistry.js";
 import { getUseCasesForRole, getWorkflowsForUseCase } from "../catalog/catalog.js";
 import { PlatformRegistry } from "../platform/registry.js";
 
-export function buildSystemPrompt(userId: string): string {
-    const role = getRoleForUser(userId);
-    const displayName = getDisplayName(userId);
+export function buildSystemPrompt(userId: string, source: IdentitySource, formatMode: FormatMode = "markdown"): string {
+    const role = getRoleForUser(userId, source);
+    const displayName = getDisplayName(userId, source);
     const roleConfigs = getRoleConfigs();
     const config = roleConfigs[role];
     const persona = config?.persona ?? "Respostas concisas e diretas.";
@@ -17,7 +18,7 @@ export function buildSystemPrompt(userId: string): string {
         buildUseCasesSection(role),
         buildPersonaSection(role, persona),
         buildViewsSection(role),
-        buildFormatSection(),
+        buildFormatSection(formatMode),
     ].join("\n\n");
 }
 
@@ -101,10 +102,55 @@ function buildViewsSection(role: Role): string {
 Seu perfil default é *${role}*. Use essa persona por padrão.`;
 }
 
-function buildFormatSection(): string {
+function buildFormatSection(mode: FormatMode): string {
+    const structureRules = buildStructureRules(mode);
+    const formatRules = buildFormatRules(mode);
+
     return `## Response Format — OBRIGATÓRIO
 
-### Estrutura de seções
+${structureRules}
+
+${formatRules}
+
+### Lambda: always show readable name
+When listing Lambdas, ALWAYS show the readable name (Description field) alongside the hash. The technical name alone is useless to the user.
+Format: *ReadableName* (function-prefix-{hash_short}...)
+
+### Anti-slop
+- Conciso e factual. Direto ao ponto.
+- NUNCA use filler: "vamos verificar", "com certeza", "ótima pergunta"
+- NUNCA comece com saudação. Comece direto com a informação.
+- Se não encontrar: "Não encontrado." + motivo breve.
+- ZERO emojis. Nenhum. Sem exceções.
+
+### Idioma
+- Responda em português (pt-BR)
+
+### Segurança
+- NUNCA exponha secrets, passwords ou variáveis de ambiente sensíveis
+- READ-ONLY: nunca sugira modificar infraestrutura
+- Se ambíguo, peça clarificação brevemente`;
+}
+
+function buildStructureRules(mode: FormatMode): string {
+    if (mode === "plain") {
+        return `### Estrutura de seções
+Use linhas em branco para separar seções lógicas.
+
+Primeira seção: resumo geral (uma ou duas linhas).
+Demais seções: comece com o título na primeira linha, seguido de detalhes abaixo.
+
+### Detalhes chave: valor
+Linhas consecutivas no formato \`Chave: valor\` para propriedades de recursos.
+
+### Listas
+Use \`- \` (hífen + espaço) para itens de lista. NÃO use bullet char (•).
+Cada item deve ser uma única linha.
+Para listas curtas de nomes/identificadores, use vírgulas numa única linha ao invés de bullet points.`;
+    }
+
+    if (mode === "slack-mrkdwn") {
+        return `### Estrutura de seções
 Sua resposta será renderizada como blocos visuais no Slack. Use \`---\` em linha própria para separar seções lógicas. Cada seção se torna um bloco visual separado por uma linha horizontal.
 
 Primeira seção: resumo geral (uma ou duas linhas).
@@ -135,31 +181,58 @@ Linhas consecutivas no formato \`Chave: valor\` são renderizadas automaticament
 ### Listas
 Use \`- \` (hífen + espaço) para itens de lista. NÃO use bullet char (•).
 Cada item deve ser uma única linha.
-Para listas curtas de nomes/identificadores (ex: nomes de filas, domínios, atualizações recentes, ambientes), use vírgulas numa única linha ao invés de bullet points. Reserve bullet points apenas para itens com descrições longas ou multi-linha.
+Para listas curtas de nomes/identificadores (ex: nomes de filas, domínios, atualizações recentes, ambientes), use vírgulas numa única linha ao invés de bullet points. Reserve bullet points apenas para itens com descrições longas ou multi-linha.`;
+    }
 
-### Slack mrkdwn
+    // markdown and gchat-card share the same structure
+    return `### Estrutura de seções
+Use \`---\` em linha própria para separar seções lógicas.
+
+Primeira seção: resumo geral (uma ou duas linhas).
+Demais seções: comece com **Título em bold** ou use headers \`##\`, seguido de detalhes abaixo.
+
+### Detalhes chave: valor
+Linhas consecutivas no formato \`Chave: valor\` para propriedades de recursos.
+
+### Listas
+Use \`- \` (hífen + espaço) para itens de lista. NÃO use bullet char (•).
+Cada item deve ser uma única linha.
+Para listas curtas de nomes/identificadores, use vírgulas numa única linha ao invés de bullet points. Reserve bullet points apenas para itens com descrições longas ou multi-linha.`;
+}
+
+function buildFormatRules(mode: FormatMode): string {
+    switch (mode) {
+        case "slack-mrkdwn":
+            return `### Slack mrkdwn
 - Bold: *texto* (NÃO **texto**)
 - Itálico: _texto_
 - Code inline: \`code\`
 - Code block: \`\`\` (SEM language hint)
-- NÃO use # para headers, NÃO use tabelas markdown, NÃO use [links](url)
+- NÃO use # para headers, NÃO use tabelas markdown, NÃO use [links](url)`;
 
-### Lambda: always show readable name
-When listing Lambdas, ALWAYS show the readable name (Description field) alongside the hash. The technical name alone is useless to the user.
-Format: *ReadableName* (function-prefix-{hash_short}...)
+        case "markdown":
+            return `### Markdown
+- Bold: **texto**
+- Itálico: *texto*
+- Code inline: \`code\`
+- Code block: \`\`\` com language hint quando apropriado
+- Headers: use \`##\` e \`###\`
+- Tabelas markdown são permitidas quando apropriado
+- Links: [texto](url)`;
 
-### Anti-slop
-- Conciso e factual. Direto ao ponto.
-- NUNCA use filler: "vamos verificar", "com certeza", "ótima pergunta"
-- NUNCA comece com saudação. Comece direto com a informação.
-- Se não encontrar: "Não encontrado." + motivo breve.
-- ZERO emojis. Nenhum. Sem exceções.
+        case "gchat-card":
+            return `### Google Chat (Markdown)
+- Bold: **texto**
+- Itálico: *texto*
+- Code inline: \`code\`
+- Code block: \`\`\` com language hint quando apropriado
+- Headers: use \`##\` e \`###\`
+- Respostas serão renderizadas em cards do Google Chat. Mantenha formatação simples — markdown padrão funciona bem.`;
 
-### Idioma
-- Responda em português (pt-BR)
-
-### Segurança
-- NUNCA exponha secrets, passwords ou variáveis de ambiente sensíveis
-- READ-ONLY: nunca sugira modificar infraestrutura
-- Se ambíguo, peça clarificação brevemente`;
+        case "plain":
+            return `### Texto simples
+- Sem formatação especial. Apenas texto puro.
+- Use MAIÚSCULAS para ênfase quando necessário.
+- Use indentação com espaços para hierarquia.`;
+    }
 }

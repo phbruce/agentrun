@@ -6,7 +6,7 @@ import { PlatformRegistry } from "../platform/registry.js";
 import { logger } from "../logger.js";
 
 export class StaticIdentityProvider implements IdentityProvider {
-    async resolve(externalId: string, source: IdentitySource = "slack"): Promise<ResolvedIdentity> {
+    async resolve(externalId: string, source: IdentitySource): Promise<ResolvedIdentity> {
         const profile = getUserProfile(externalId, source);
         const role = profile?.role ?? "viewer";
 

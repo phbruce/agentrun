@@ -11,6 +11,7 @@ import { processDirectSkill } from "./directExecutor.js";
 import { getIdentityProvider } from "../identity/index.js";
 import { createClientsForIdentity } from "../mcp/clientFactory.js";
 import type { ResolvedIdentity } from "../identity/types.js";
+import type { IdentitySource } from "../rbac/types.js";
 import { getModels } from "../platform/models.js";
 
 // Lazy import — claude-agent-sdk is only available in Lambda runtime, not in CLI
@@ -33,11 +34,11 @@ export interface AgentResult {
     error?: string;
 }
 
-export async function processInfraQuery(userQuery: string, userId: string, model?: string, isDm: boolean = false): Promise<AgentResult> {
+export async function processInfraQuery(userQuery: string, userId: string, source: IdentitySource, model?: string, isDm: boolean = false): Promise<AgentResult> {
     const startTime = Date.now();
     const toolsUsed: ToolUsageEntry[] = [];
 
-    const identity = await getIdentityProvider().resolve(userId);
+    const identity = await getIdentityProvider().resolve(userId, source);
     const role = identity.role;
     const config = getRoleConfig(role);
     const allowedTools = getAllowedToolsForRole(role);
@@ -70,7 +71,7 @@ export async function processInfraQuery(userQuery: string, userId: string, model
         for await (const message of query({
             prompt: userQuery,
             options: {
-                systemPrompt: buildSystemPrompt(userId),
+                systemPrompt: buildSystemPrompt(userId, source),
                 pathToClaudeCodeExecutable: "/opt/nodejs/node_modules/@anthropic-ai/claude-code/cli.js",
                 maxTurns: config.maxTurns,
                 maxBudgetUsd: config.maxBudgetUsd,
@@ -112,15 +113,15 @@ export async function processInfraQuery(userQuery: string, userId: string, model
     };
 }
 
-export async function processSkill(skill: SkillDef, args: string, userId: string, model?: string, isDm: boolean = false): Promise<AgentResult> {
+export async function processSkill(skill: SkillDef, args: string, userId: string, source: IdentitySource, model?: string, isDm: boolean = false): Promise<AgentResult> {
     if (skill.mode === "direct") {
-        return processDirectSkill(skill, args, userId, model ?? getModels().defaultModel);
+        return processDirectSkill(skill, args, userId, source, model ?? getModels().defaultModel);
     }
 
     const startTime = Date.now();
     const toolsUsed: ToolUsageEntry[] = [];
 
-    const identity = await getIdentityProvider().resolve(userId);
+    const identity = await getIdentityProvider().resolve(userId, source);
     const role = identity.role;
     const allowedTools = resolveSkillMcpTools(skill);
 
@@ -153,7 +154,7 @@ export async function processSkill(skill: SkillDef, args: string, userId: string
         for await (const message of query({
             prompt,
             options: {
-                systemPrompt: buildSystemPrompt(userId),
+                systemPrompt: buildSystemPrompt(userId, source),
                 pathToClaudeCodeExecutable: "/opt/nodejs/node_modules/@anthropic-ai/claude-code/cli.js",
                 maxTurns: skill.maxTurns,
                 maxBudgetUsd: skill.maxBudgetUsd,
