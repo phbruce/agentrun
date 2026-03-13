@@ -1,0 +1,31 @@
+{
+  "name": "agentrun-example-gchat-standalone",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@agentrun-ai/core": "^0.1.0",
+    "@agentrun-ai/aws": "^0.1.0",
+    "@agentrun-ai/channel-gchat": "^0.1.0",
+    "@agentrun-ai/tools-aws": "^0.1.0",
+    "@agentrun-ai/tools-github": "^0.1.0",
+    "@agentrun-ai/tools-jira": "^0.1.0",
+    "fastify": "^5.2.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
