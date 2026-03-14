@@ -90,7 +90,7 @@ export { getRoleForUser, getDisplayName } from "./rbac/permissions.js";
 export { getRoleConfig } from "./rbac/permissions.js";
 
 // Catalog functions
-export { getUseCasesForRole, getWorkflowsForUseCase, getSkillsForRole, setCatalog } from "./catalog/catalog.js";
+export { getUseCasesForRole, getWorkflowsForUseCase, getSkillsForRole, setCatalog, getCatalog } from "./catalog/catalog.js";
 
 // Usage
 export { getMonthlyUsage } from "./usage/tracker.js";
