@@ -31,6 +31,9 @@ export function getUseCasesForRole(role: Role): UseCaseDef[] {
         .filter((uc): uc is UseCaseDef => uc !== undefined);
 }
 
+/** MCP server name used for Agent SDK tool prefix (mcp__{name}__). */
+const MCP_SERVER_NAME = "infra-tools";
+
 export function getMcpToolsForRole(role: Role): string[] {
     const useCases = getUseCasesForRole(role);
     const catalog = getCatalog();
@@ -45,6 +48,10 @@ export function getMcpToolsForRole(role: Role): string[] {
                 if (tool && tool.type === "mcp-server" && tool.mcpTool) {
                     mcpTools.add(tool.mcpTool);
                 }
+            }
+            // Also include workflows-with-steps as callable MCP tools
+            if (wf.steps && wf.steps.length > 0) {
+                mcpTools.add(`mcp__${MCP_SERVER_NAME}__${wf.name}`);
             }
         }
     }
@@ -140,6 +147,14 @@ export function resolveSkillMcpTools(skill: SkillDef): string[] {
         const tool = catalog.tools.get(toolName);
         if (tool && tool.type === "mcp-server" && tool.mcpTool) {
             mcpTools.push(tool.mcpTool);
+        }
+        // If the tool is referenced by a workflow-with-steps, include the workflow MCP name
+        if (tool && tool.type === "lambda") {
+            for (const wf of catalog.workflows.values()) {
+                if (wf.steps && wf.steps.length > 0 && wf.tools.includes(toolName)) {
+                    mcpTools.push(`mcp__${MCP_SERVER_NAME}__${wf.name}`);
+                }
+            }
         }
     }
     return mcpTools;
