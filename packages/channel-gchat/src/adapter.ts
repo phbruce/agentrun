@@ -2,7 +2,7 @@
 
 import type { ChannelAdapter, ChannelContext, AgentResult } from "@agentrun-ai/core";
 import { getDisplayName, getRoleForUser } from "@agentrun-ai/core";
-import { createCardMessage } from "./gchatClient.js";
+import { postMessage, createCardMessage, updateMessage } from "./gchatClient.js";
 import { formatAgentResponse, formatErrorResponse, formatGreetingCard } from "./formatting.js";
 
 /**
@@ -19,23 +19,42 @@ import { formatAgentResponse, formatErrorResponse, formatGreetingCard } from "./
  * - `pendingMessageName` — set internally after sending the placeholder
  */
 export class GChatChannelAdapter implements ChannelAdapter {
-    async onProcessingStart(_ctx: ChannelContext): Promise<void> {
-        // No placeholder — Google Chat shows "Message deleted" when we delete,
-        // and doesn't support emoji reactions. The card arrives directly.
+    async onProcessingStart(ctx: ChannelContext): Promise<void> {
+        const { spaceId, threadName } = ctx.meta;
+        if (!spaceId) return;
+        try {
+            const msg = await postMessage(spaceId, "Analisando...", threadName || undefined);
+            if (msg?.name) {
+                ctx.meta.pendingMessageName = msg.name;
+            }
+        } catch {
+            // Non-critical — result will arrive as new message
+        }
     }
 
     async deliverResult(ctx: ChannelContext, result: AgentResult): Promise<void> {
-        const { spaceId, threadName } = ctx.meta;
+        const { spaceId, threadName, pendingMessageName } = ctx.meta;
         if (!spaceId) return;
-        const card = formatAgentResponse(result, ctx.userId, ctx.source);
-        await createCardMessage(spaceId, card, threadName || undefined);
+
+        if (pendingMessageName) {
+            // Update "Analisando..." with the response text (keeps same message, no delete)
+            await updateMessage(pendingMessageName, result.answer);
+        } else {
+            const card = formatAgentResponse(result, ctx.userId, ctx.source);
+            await createCardMessage(spaceId, card, threadName || undefined);
+        }
     }
 
     async deliverError(ctx: ChannelContext, error: string): Promise<void> {
-        const { spaceId, threadName } = ctx.meta;
+        const { spaceId, threadName, pendingMessageName } = ctx.meta;
         if (!spaceId) return;
-        const errorCard = formatErrorResponse(error);
-        await createCardMessage(spaceId, errorCard, threadName || undefined);
+
+        if (pendingMessageName) {
+            await updateMessage(pendingMessageName, `Erro: ${error}`);
+        } else {
+            const errorCard = formatErrorResponse(error);
+            await createCardMessage(spaceId, errorCard, threadName || undefined);
+        }
     }
 
     async deliverGreeting(ctx: ChannelContext): Promise<void> {
