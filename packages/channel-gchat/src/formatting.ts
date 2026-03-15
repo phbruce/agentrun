@@ -222,7 +222,7 @@ export async function formatGreetingCard(displayName: string, role: string, user
             text: s.command,
             onClick: {
                 action: {
-                    actionMethodName: "skill_invoke",
+                    function: "skill_invoke",
                     parameters: [{ key: "command", value: s.command }],
                 },
             },
