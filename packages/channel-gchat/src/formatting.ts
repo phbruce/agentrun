@@ -137,7 +137,7 @@ function parseMarkdownToSections(markdown: string): GChatSection[] {
  * Format an AgentResult as a Google Chat card.
  * Mirrors the Slack formatting: profile header, content, footer with metadata.
  */
-export function formatAgentResponse(result: AgentResult, userId?: string, source?: string): GChatCard {
+export function formatAgentResponse(result: AgentResult, userId?: string, source?: string, fallbackName?: string): GChatCard {
     const sections = parseMarkdownToSections(result.answer);
 
     // Determine category for label
@@ -145,7 +145,8 @@ export function formatAgentResponse(result: AgentResult, userId?: string, source
     const label = category !== "greeting" ? CATEGORY_LABELS[category] : "Infrastructure";
 
     // Profile header section
-    const displayName = userId && source ? getDisplayName(userId, source) : "Usuário";
+    const registryName = userId && source ? getDisplayName(userId, source) : "Usuário";
+    const displayName = registryName !== "Usuário" ? registryName : (fallbackName || userId || "Usuário");
     const headerSection: GChatSection = {
         widgets: [
             decoratedWidget("User", displayName),
