@@ -1,0 +1,50 @@
+{
+  "name": "@agentrun-ai/gcp",
+  "version": "0.2.0",
+  "description": "GCP provider implementations: Vertex AI, Firestore, Cloud Storage, Pub/Sub, Secret Manager",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@agentrun-ai/core": "workspace:*",
+    "@google-cloud/vertexai": "^1.9.0",
+    "@google-cloud/firestore": "^7.11.0",
+    "@google-cloud/storage": "^7.15.0",
+    "@google-cloud/pubsub": "^4.9.0",
+    "@google-cloud/secret-manager": "^5.6.0",
+    "google-auth-library": "^9.15.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.7.0"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phbruce/agentrun.git",
+    "directory": "packages/gcp"
+  },
+  "homepage": "https://github.com/phbruce/agentrun"
+}

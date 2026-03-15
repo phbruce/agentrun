@@ -62,6 +62,7 @@ export default {
             [
                 'core',
                 'aws',
+                'gcp',
                 'channel-slack',
                 'channel-mcp',
                 'channel-gchat',
