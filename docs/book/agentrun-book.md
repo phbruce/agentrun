@@ -3886,7 +3886,7 @@ At the core of the eval framework is `classifyQuery()`, a pure function in `@age
 | `sqs` | SQS/DLQ queries | "sqs", "fila", "dlq", "dead letter", "stuck", "backlog" |
 | `generic` | Fallback for broad queries | (no keyword match, or multi-domain) |
 
-The classifier is bilingual (Portuguese and English), reflecting the platform's origin at the reference deployment. Multi-word keywords (e.g., "cold start", "dead letter") score +2 while single-word keywords score +1. The highest-scoring category wins; ties default to `generic`.
+The classifier is bilingual (Portuguese and English), supporting teams that operate in both languages. Multi-word keywords (e.g., "cold start", "dead letter") score +2 while single-word keywords score +1. The highest-scoring category wins; ties default to `generic`.
 
 **Algorithm:**
 
