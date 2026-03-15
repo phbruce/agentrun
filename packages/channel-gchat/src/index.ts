@@ -10,4 +10,4 @@ export { postMessage, createCardMessage, updateMessage, deleteMessage } from "./
 export type { GChatCard, GChatSection, GChatWidget, GChatButton } from "./gchatClient.js";
 
 // Formatting helpers
-export { formatAgentResponse, formatErrorResponse, formatGreetingCard } from "./formatting.js";
+export { formatAgentResponse, formatErrorResponse, formatGreetingCard, markdownToHtml } from "./formatting.js";
