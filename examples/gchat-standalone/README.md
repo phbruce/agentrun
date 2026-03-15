@@ -83,7 +83,7 @@ Then update the Google Chat app's HTTP endpoint URL to `https://<ngrok-url>/gcha
 
 1. Open Google Chat and find your bot in the sidebar (or start a DM with it)
 2. Send a message like "health check" or "list lambdas"
-3. The bot will respond with "Processando..." and then update the message with the result
+3. The bot will respond with "Analisando..." and then post a card with the result
 
 ## Project Structure
 
