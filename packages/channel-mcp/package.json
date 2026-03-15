@@ -1,6 +1,6 @@
 {
   "name": "@agentrun-ai/channel-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP (Model Context Protocol) server channel: JSON-RPC handler, tool serving",
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -28,7 +28,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "publishConfig": {
     "access": "public"
