@@ -16,33 +16,53 @@ function loadUsers(): UserProfile[] {
 
 let _users: UserProfile[] | null = null;
 let _userMap: Map<string, UserProfile> | null = null;
+let _emailMap: Map<string, UserProfile> | null = null;
 
-function ensureLoaded(): Map<string, UserProfile> {
+function ensureLoaded(): { byKey: Map<string, UserProfile>; byEmail: Map<string, UserProfile> } {
     if (!_userMap) {
         _users = loadUsers();
         _userMap = new Map(_users.map((u) => [makeKey(u.externalId, u.source), u]));
+        // Build email-only index for cross-channel fallback
+        _emailMap = new Map();
+        for (const u of _users) {
+            // First match wins — source-specific lookup takes priority anyway
+            if (!_emailMap.has(u.externalId)) {
+                _emailMap.set(u.externalId, u);
+            }
+        }
     }
-    return _userMap;
+    return { byKey: _userMap, byEmail: _emailMap! };
 }
 
 /** Reset cached users (for testing or config reload). */
 export function resetUserRegistry(): void {
     _users = null;
     _userMap = null;
+    _emailMap = null;
 }
 
 function makeKey(externalId: string, source: IdentitySource): string {
     return `${source}:${externalId}`;
 }
 
+/**
+ * Lookup user by source:externalId, falling back to externalId-only match.
+ * This allows the same email to work across channels (Slack, GChat, etc.)
+ * without duplicating user entries in PlatformConfig.
+ */
+function findUser(userId: string, source: IdentitySource): UserProfile | null {
+    const { byKey, byEmail } = ensureLoaded();
+    return byKey.get(makeKey(userId, source)) ?? byEmail.get(userId) ?? null;
+}
+
 export function getUserProfile(userId: string, source: IdentitySource): UserProfile | null {
-    return ensureLoaded().get(makeKey(userId, source)) ?? null;
+    return findUser(userId, source);
 }
 
 export function getRoleForUser(userId: string, source: IdentitySource): Role {
-    return ensureLoaded().get(makeKey(userId, source))?.role ?? "viewer";
+    return findUser(userId, source)?.role ?? "viewer";
 }
 
 export function getDisplayName(userId: string, source: IdentitySource): string {
-    return ensureLoaded().get(makeKey(userId, source))?.name ?? "Usuário";
+    return findUser(userId, source)?.name ?? "Usuário";
 }

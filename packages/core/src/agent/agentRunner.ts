@@ -72,7 +72,7 @@ export async function processInfraQuery(userQuery: string, userId: string, sourc
             prompt: userQuery,
             options: {
                 systemPrompt: buildSystemPrompt(userId, source),
-                pathToClaudeCodeExecutable: "/opt/nodejs/node_modules/@anthropic-ai/claude-code/cli.js",
+                pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_EXECUTABLE ?? "/opt/nodejs/node_modules/@anthropic-ai/claude-code/cli.js",
                 maxTurns: config.maxTurns,
                 maxBudgetUsd: config.maxBudgetUsd,
                 permissionMode: "bypassPermissions",
@@ -155,7 +155,7 @@ export async function processSkill(skill: SkillDef, args: string, userId: string
             prompt,
             options: {
                 systemPrompt: buildSystemPrompt(userId, source),
-                pathToClaudeCodeExecutable: "/opt/nodejs/node_modules/@anthropic-ai/claude-code/cli.js",
+                pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_EXECUTABLE ?? "/opt/nodejs/node_modules/@anthropic-ai/claude-code/cli.js",
                 maxTurns: skill.maxTurns,
                 maxBudgetUsd: skill.maxBudgetUsd,
                 permissionMode: "bypassPermissions",
