@@ -18,29 +18,16 @@ AgentRun is a self-hosted runtime that turns declarative YAML manifests into a f
 
 Every infrastructure concern in AgentRun is behind a TypeScript interface defined in `@agentrun-ai/core`. The core package has **zero cloud dependencies** — all cloud-specific behavior is injected at startup via `PlatformRegistry`.
 
-`@agentrun-ai/aws` is the reference implementation. To run on another cloud, implement the same interfaces and register your providers:
+`@agentrun-ai/aws` is the reference implementation. `@agentrun-ai/gcp` provides Google Cloud providers. To run on another cloud, implement the same interfaces and register your providers:
 
 ```typescript
-import { PlatformRegistry, type PlatformProviders } from "@agentrun-ai/core";
+import { setProviderRegistrar, bootstrapPlatform } from "@agentrun-ai/core";
+import { registerGcpProviders } from "@agentrun-ai/gcp";
 
-// Example: register custom providers (Vertex AI, Firestore, GCS, etc.)
-const providers: PlatformProviders = {
-    llm:          new VertexAiProvider(config),       // implements LlmProvider
-    credentials:  new GcpCredentialProvider(config),  // implements CredentialProvider
-    sessions:     new FirestoreSessionStore(config),  // implements SessionStore
-    usage:        new FirestoreUsageStore(config),    // implements UsageStore
-    manifests:    new GcsManifestStore(config),       // implements ManifestStore
-    queue:        new PubSubQueueProvider(config),    // implements QueueProvider
-    secrets:      new GcpSecretManager(config),       // implements BootstrapSecretProvider
-    // Optional:
-    embeddings:   new VertexEmbeddingProvider(config), // implements EmbeddingProvider
-    vectorStore:  new PgVectorStore(config),           // implements VectorStore
-};
-
-PlatformRegistry.instance().register(providers);
+// Use the GCP implementation (Vertex AI, Firestore, Cloud Storage, Pub/Sub, Secret Manager)
+setProviderRegistrar(registerGcpProviders);
+await bootstrapPlatform();
 ```
-
-> No `@agentrun-ai/gcp` package exists yet — community contributions welcome.
 
 ## Architecture
 
@@ -54,18 +41,18 @@ Channel Input → Identity Resolution → RBAC Gating → Routing
 
 Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. The `@agentrun-ai/aws` package provides the reference implementation; alternatives can be built by implementing the same interfaces.
 
-| Interface | Purpose | AWS impl (`@agentrun-ai/aws`) | Alternatives (implement the interface) |
-|-----------|---------|-------------------------------|----------------------------------------|
-| `LlmProvider` | LLM completions and summarization | Bedrock (`BedrockLlmProvider`) | Vertex AI, OpenAI, Ollama |
-| `CredentialProvider` | Per-role scoped credentials | STS (`StsCredentialProvider`) | GCP IAM, Azure AD, Vault |
-| `SessionStore` | Conversation history persistence | DynamoDB (`DynamoSessionStore`) | Firestore, PostgreSQL, Redis |
-| `UsageStore` | Token and invocation tracking | DynamoDB (`DynamoUsageStore`) | Firestore, PostgreSQL, Redis |
-| `ManifestStore` | Pack manifest storage and discovery | S3 (`S3ManifestStore`) | GCS, Azure Blob, local filesystem |
-| `QueueProvider` | Async message dispatch | SQS (`SqsQueueProvider`) | Pub/Sub, RabbitMQ, Redis Streams |
-| `BootstrapSecretProvider` | Secret retrieval at startup | Secrets Manager (`SmSecretProvider`) | GCP Secret Manager, Vault, env vars |
-| `EmbeddingProvider` | Text embeddings for RAG | Bedrock Titan (`BedrockEmbeddingProvider`) | Vertex AI, OpenAI, local models |
-| `VectorStore` | Vector similarity search | pgvector (`PgVectorStore`) | Pinecone, Qdrant, Weaviate |
-| `KnowledgeBaseProvider` | Managed RAG retrieval | Bedrock KB (`BedrockKbProvider`) | Vertex AI Search, custom |
+| Interface | Purpose | AWS impl (`@agentrun-ai/aws`) | GCP impl (`@agentrun-ai/gcp`) |
+|-----------|---------|-------------------------------|-------------------------------|
+| `LlmProvider` | LLM completions and summarization | Bedrock (`BedrockLlmProvider`) | Vertex AI (`VertexAiLlmProvider`) |
+| `CredentialProvider` | Per-role scoped credentials | STS (`StsCredentialProvider`) | GCP IAM (`GcpCredentialProvider`) |
+| `SessionStore` | Conversation history persistence | DynamoDB (`DynamoSessionStore`) | Firestore (`FirestoreSessionStore`) |
+| `UsageStore` | Token and invocation tracking | DynamoDB (`DynamoUsageStore`) | Firestore (`FirestoreUsageStore`) |
+| `ManifestStore` | Pack manifest storage and discovery | S3 (`S3ManifestStore`) | Cloud Storage (`GcsManifestStore`) |
+| `QueueProvider` | Async message dispatch | SQS (`SqsQueueProvider`) | Pub/Sub (`PubSubQueueProvider`) |
+| `BootstrapSecretProvider` | Secret retrieval at startup | Secrets Manager (`SmSecretProvider`) | Secret Manager (`GcpSecretProvider`) |
+| `EmbeddingProvider` | Text embeddings for RAG | Bedrock Titan (`BedrockEmbeddingProvider`) | Vertex AI (`VertexEmbeddingProvider`) |
+| `VectorStore` | Vector similarity search | pgvector (`PgVectorStore`) | pgvector (`PgVectorStore`) |
+| `KnowledgeBaseProvider` | Managed RAG retrieval | Bedrock KB (`BedrockKbProvider`) | Vertex AI Search (`VertexSearchProvider`) |
 
 ## Packages
 
@@ -79,6 +66,7 @@ Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. T
 | [`@agentrun-ai/tools-aws`](packages/tools-aws) | AWS infrastructure tools (EKS, RDS, Lambda, CloudWatch, SQS) |
 | [`@agentrun-ai/tools-github`](packages/tools-github) | GitHub tools (PRs, commits, reviews) |
 | [`@agentrun-ai/tools-jira`](packages/tools-jira) | Jira tools (issues, comments, transitions) |
+| [`@agentrun-ai/gcp`](packages/gcp) | GCP providers: Vertex AI, Firestore, Cloud Storage, Pub/Sub, Secret Manager |
 | [`@agentrun-ai/cli`](packages/cli) | CLI: validate manifests, sync packs, ingest docs for RAG |
 
 ### Dependency graph
@@ -87,6 +75,7 @@ Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. T
 @agentrun-ai/core              (zero external deps — pure TypeScript)
     ↑
 @agentrun-ai/aws               @aws-sdk/*, @agentrun-ai/core
+@agentrun-ai/gcp               @google-cloud/*, @agentrun-ai/core
 @agentrun-ai/channel-slack     @slack/web-api, @agentrun-ai/core
 @agentrun-ai/channel-gchat     @agentrun-ai/core
 @agentrun-ai/channel-mcp       @agentrun-ai/core
@@ -122,32 +111,28 @@ await processRequest(adapter, {
 });
 ```
 
-### Option B: Custom providers (any cloud)
+### Option B: GCP providers
 
 ```bash
-npm install @agentrun-ai/core @agentrun-ai/channel-slack
+npm install @agentrun-ai/core @agentrun-ai/gcp @agentrun-ai/channel-slack
 ```
 
 ```typescript
-import { PlatformRegistry, bootstrapPlatform, processRequest } from "@agentrun-ai/core";
+import { setProviderRegistrar, bootstrapPlatform, processRequest } from "@agentrun-ai/core";
+import { registerGcpProviders } from "@agentrun-ai/gcp";
 import { SlackChannelAdapter } from "@agentrun-ai/channel-slack";
-// Import your own provider implementations
-import { MyLlmProvider, MySessionStore, /* ... */ } from "./providers.js";
 
-PlatformRegistry.instance().register({
-    llm:         new MyLlmProvider(),
-    sessions:    new MySessionStore(),
-    credentials: new MyCredentialProvider(),
-    usage:       new MyUsageStore(),
-    manifests:   new MyManifestStore(),
-    queue:       new MyQueueProvider(),
-    secrets:     new MySecretProvider(),
-});
-
+// Use the GCP implementation (Vertex AI, Firestore, Cloud Storage, Pub/Sub, Secret Manager)
+setProviderRegistrar(registerGcpProviders);
 await bootstrapPlatform();
 
 const adapter = new SlackChannelAdapter();
-await processRequest(adapter, { /* ... */ });
+await processRequest(adapter, {
+    userId: "U12345",
+    channelId: "C12345",
+    text: "show me the cluster status",
+    threadTs: "1234567890.123456",
+});
 ```
 
 ## Deployment Examples

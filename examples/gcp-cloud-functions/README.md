@@ -2,10 +2,8 @@
 
 This example deploys AgentRun on Google Cloud Functions with Pub/Sub for async processing.
 
-> **Note**: There is no `@agentrun-ai/gcp` provider package yet. This example uses
-> `@agentrun-ai/aws` for the provider implementations (Bedrock for LLM, DynamoDB for
-> sessions, S3 for manifests). If you want to run fully on GCP, you can implement the
-> provider interfaces from `@agentrun-ai/core` (see the "Custom Providers" section below).
+> This example uses `@agentrun-ai/gcp` for all provider implementations (Vertex AI for LLM,
+> Firestore for sessions, Cloud Storage for manifests, Pub/Sub for queues, Secret Manager for secrets).
 
 ## Architecture
 
@@ -23,54 +21,8 @@ Slack ──> Cloud Function (events) ──> Pub/Sub ──> Cloud Function (pr
 - Node.js >= 18
 - Google Cloud SDK (`gcloud`)
 - A GCP project with Cloud Functions and Pub/Sub enabled
-- AWS credentials (for cross-cloud Bedrock access) or Vertex AI credentials
+- GCP credentials with Vertex AI, Firestore, Cloud Storage, Pub/Sub, and Secret Manager access
 - Slack app with Events API and Interactivity enabled
-
-## Custom Providers (GCP-native)
-
-To avoid cross-cloud dependencies, implement these interfaces from `@agentrun-ai/core`:
-
-```typescript
-import type {
-    LlmProvider,
-    SessionStore,
-    ManifestStore,
-    QueueProvider,
-    CredentialProvider,
-    UsageStore,
-} from "@agentrun-ai/core";
-
-// Example: Vertex AI LLM provider
-class VertexAiLlmProvider implements LlmProvider {
-    async query(messages, tools, systemPrompt) { /* ... */ }
-}
-
-// Example: Firestore session store
-class FirestoreSessionStore implements SessionStore {
-    async get(sessionId) { /* ... */ }
-    async put(sessionId, messages, ttl) { /* ... */ }
-}
-
-// Example: Cloud Storage manifest store
-class GcsManifestStore implements ManifestStore {
-    async listPacks() { /* ... */ }
-    async getManifest(pack, path) { /* ... */ }
-}
-```
-
-Then register them using `PlatformRegistry`:
-
-```typescript
-import { PlatformRegistry } from "@agentrun-ai/core";
-
-const registry = PlatformRegistry.instance();
-registry.register({
-    llm: new VertexAiLlmProvider(),
-    sessions: new FirestoreSessionStore(),
-    manifests: new GcsManifestStore(),
-    // ... other providers
-});
-```
 
 ## Setup
 
@@ -141,7 +93,7 @@ gcloud functions deploy agentrun-mcp \
 
 ```
 src/
-  setup.ts              # Provider registration
+  setup.ts              # GCP provider registration
   handlers/
     events.ts           # HTTP -> Slack events + interactions -> Pub/Sub
     process.ts          # Pub/Sub -> query processing
