@@ -85,7 +85,7 @@ await processRequest(adapter, {
 | [`aws-lambda`](examples/aws-lambda) | Production architecture: API Gateway + Lambda + SQS + DynamoDB |
 | [`gcp-cloud-functions`](examples/gcp-cloud-functions) | Google Cloud Functions + Pub/Sub |
 | [`gchat-standalone`](examples/gchat-standalone) | Google Chat bot via Fastify + HTTP endpoint |
-| [`standalone`](examples/standalone) | Single Fastify server, no external dependencies |
+| [`slack-standalone`](examples/slack-standalone) | Single Fastify server, no external dependencies |
 | [`docker`](examples/docker) | Docker Compose with PostgreSQL (pgvector) + Redis |
 
 ## Documentation

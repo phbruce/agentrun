@@ -3742,7 +3742,7 @@ This allows OSS users to swap AWS implementations for alternatives
 > | Example | Compute | Queue | Session Store | Notes |
 > |---------|---------|-------|---------------|-------|
 > | `examples/aws-lambda/` | AWS Lambda + SAM | SQS | DynamoDB | Reference deployment with dedup table |
-> | `examples/standalone/` | Fastify server | In-memory | In-memory | Single-process, no queue (background tasks) |
+> | `examples/slack-standalone/` | Fastify server | In-memory | In-memory | Single-process, no queue (background tasks) |
 > | `examples/docker/` | Docker + Fastify | In-memory | PostgreSQL | docker-compose with graceful shutdown |
 > | `examples/gcp-cloud-functions/` | GCP Cloud Functions | Pub/Sub | Firestore (planned) | Demonstrates non-AWS compute |
 >
