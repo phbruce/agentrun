@@ -28,7 +28,7 @@ export interface GChatButton {
     onClick: {
         openLink?: { url: string };
         action?: {
-            actionMethodName: string;
+            function: string;
             parameters: { key: string; value: string }[];
         };
     };
