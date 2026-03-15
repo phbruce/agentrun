@@ -36,13 +36,12 @@ export class GChatChannelAdapter implements ChannelAdapter {
         const { spaceId, threadName, pendingMessageName } = ctx.meta;
         if (!spaceId) return;
 
+        // Update ack to "Done" and send card with full response
         if (pendingMessageName) {
-            // Update "Analisando..." with the response (markdown → HTML, keeps same message)
-            await updateMessage(pendingMessageName, markdownToHtml(result.answer));
-        } else {
-            const card = formatAgentResponse(result, ctx.userId, ctx.source);
-            await createCardMessage(spaceId, card, threadName || undefined);
+            updateMessage(pendingMessageName, "✓").catch(() => {});
         }
+        const card = formatAgentResponse(result, ctx.userId, ctx.source);
+        await createCardMessage(spaceId, card, threadName || undefined);
     }
 
     async deliverError(ctx: ChannelContext, error: string): Promise<void> {
@@ -50,11 +49,10 @@ export class GChatChannelAdapter implements ChannelAdapter {
         if (!spaceId) return;
 
         if (pendingMessageName) {
-            await updateMessage(pendingMessageName, `Erro: ${error}`);
-        } else {
-            const errorCard = formatErrorResponse(error);
-            await createCardMessage(spaceId, errorCard, threadName || undefined);
+            updateMessage(pendingMessageName, "✗").catch(() => {});
         }
+        const errorCard = formatErrorResponse(error);
+        await createCardMessage(spaceId, errorCard, threadName || undefined);
     }
 
     async deliverGreeting(ctx: ChannelContext): Promise<void> {
