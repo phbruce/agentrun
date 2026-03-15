@@ -40,7 +40,7 @@ export class GChatChannelAdapter implements ChannelAdapter {
         if (pendingMessageName) {
             updateMessage(pendingMessageName, "✓").catch(() => {});
         }
-        const card = formatAgentResponse(result, ctx.userId, ctx.source);
+        const card = formatAgentResponse(result, ctx.userId, ctx.source, ctx.meta.displayName || undefined);
         await createCardMessage(spaceId, card, threadName || undefined);
     }
 
@@ -56,9 +56,10 @@ export class GChatChannelAdapter implements ChannelAdapter {
     }
 
     async deliverGreeting(ctx: ChannelContext): Promise<void> {
-        const { spaceId, threadName } = ctx.meta;
+        const { spaceId, threadName, displayName: metaName } = ctx.meta;
         if (!spaceId) return;
-        const displayName = getDisplayName(ctx.userId, ctx.source);
+        const registryName = getDisplayName(ctx.userId, ctx.source);
+        const displayName = registryName !== "Usuário" ? registryName : (metaName || ctx.userId);
         const role = getRoleForUser(ctx.userId, ctx.source);
         const card = await formatGreetingCard(displayName, role, ctx.userId, ctx.source);
         await createCardMessage(spaceId, card, threadName || undefined);
