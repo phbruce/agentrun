@@ -17,7 +17,7 @@ query in the background, delivering results via the Google Chat API.
 
 ## Prerequisites
 
-- Node.js >= 18
+- Node.js >= 20
 - AWS credentials configured (for Bedrock LLM, DynamoDB sessions, S3 manifests)
 - A Google Cloud project with the Google Chat API enabled
 - A Google Chat app configured as an HTTP endpoint
@@ -47,8 +47,8 @@ npm install
 4. **Configure environment variables:**
 
 ```bash
-# Google Chat service account credentials (JSON key file path or contents)
-export GCHAT_SERVICE_ACCOUNT_KEY=/path/to/service-account.json
+# Google Chat service account credentials (raw JSON string content)
+export GCHAT_SERVICE_ACCOUNT_KEY='{"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}'
 
 # AgentRun platform config (S3 path or local file)
 export AGENTRUN_PLATFORM_CONFIG=s3://your-bucket/config.yaml
@@ -99,7 +99,7 @@ tsconfig.json
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GCHAT_SERVICE_ACCOUNT_KEY` | Yes | Path to Google Chat service account JSON key |
+| `GCHAT_SERVICE_ACCOUNT_KEY` | Yes | Raw JSON string content of the Google Chat service account key |
 | `AGENTRUN_PLATFORM_CONFIG` | Yes | Platform config location (S3 URI or local path) |
 | `AGENTRUN_PACKS` | No | Comma-separated pack names (default: `default`) |
 | `AWS_REGION` | Yes | AWS region for Bedrock, DynamoDB, S3 |

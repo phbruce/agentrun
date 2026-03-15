@@ -16,7 +16,7 @@ For production use with high concurrency, consider the AWS Lambda or Docker exam
 
 ## Prerequisites
 
-- Node.js >= 18
+- Node.js >= 20
 - AWS credentials configured (for Bedrock LLM, DynamoDB sessions, S3 manifests)
 - A Slack app with Events API and Interactivity enabled
 - ngrok or similar tunnel for local development
@@ -29,11 +29,18 @@ For production use with high concurrency, consider the AWS Lambda or Docker exam
 npm install
 ```
 
-2. Configure environment variables:
+2. Create a `.env` file with the required variables:
 
 ```bash
-cp .env.example .env
-# Edit .env with your values
+# Slack app credentials
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_SIGNING_SECRET=...
+
+# AgentRun platform config (S3 path or local file)
+AGENTRUN_PLATFORM_CONFIG=s3://your-bucket/config.yaml
+
+# AWS credentials (for Bedrock, DynamoDB, S3)
+AWS_REGION=us-east-1
 ```
 
 3. Start the server:
@@ -74,7 +81,6 @@ ngrok http 3000
 src/
   index.ts              # Fastify server with /events and /mcp routes
   setup.ts              # Provider registration
-.env.example            # Environment variable template
 package.json
 tsconfig.json
 ```
