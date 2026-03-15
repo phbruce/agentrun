@@ -3,7 +3,7 @@
 import type { ChannelAdapter, ChannelContext, AgentResult } from "@agentrun-ai/core";
 import { getDisplayName, getRoleForUser } from "@agentrun-ai/core";
 import { postMessage, createCardMessage, updateMessage } from "./gchatClient.js";
-import { formatAgentResponse, formatErrorResponse, formatGreetingCard } from "./formatting.js";
+import { formatAgentResponse, formatErrorResponse, formatGreetingCard, markdownToHtml } from "./formatting.js";
 
 /**
  * Google Chat channel adapter for AgentRun.
@@ -37,8 +37,8 @@ export class GChatChannelAdapter implements ChannelAdapter {
         if (!spaceId) return;
 
         if (pendingMessageName) {
-            // Update "Analisando..." with the response text (keeps same message, no delete)
-            await updateMessage(pendingMessageName, result.answer);
+            // Update "Analisando..." with the response (markdown → HTML, keeps same message)
+            await updateMessage(pendingMessageName, markdownToHtml(result.answer));
         } else {
             const card = formatAgentResponse(result, ctx.userId, ctx.source);
             await createCardMessage(spaceId, card, threadName || undefined);

@@ -41,7 +41,7 @@ function truncate(text: string, max: number): string {
     return text.length <= max ? text : text.slice(0, max - 3) + "...";
 }
 
-function markdownToHtml(text: string): string {
+export function markdownToHtml(text: string): string {
     return text
         .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")       // **bold**
         .replace(/\*(.+?)\*/g, "<b>$1</b>")            // *bold*
