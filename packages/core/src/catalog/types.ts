@@ -48,6 +48,7 @@ export interface UseCaseDef {
     keywords: string[];
     workflows: string[];
     template: string;
+    scope?: string;
 }
 
 export interface SkillDef {
