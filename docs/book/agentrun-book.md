@@ -3580,7 +3580,11 @@ Phase 8 — Scope Rename & Eval (Mar 7-13, 2026)
   Mar 13   Node 18 dropped from CI (AWS SDK requires >=20)
            Book overhauled: de-Lambda-ization, code drift fixes
 
-Phase 9 — Google Chat Integration (Mar 15, 2026)
+Phase 9 — GCP Providers & Google Chat (Mar 15, 2026)
+  Mar 15   GCP provider package (@agentrun-ai/gcp) with all 10 interfaces
+           Vertex AI, Firestore, Cloud Storage, Pub/Sub, Secret Manager
+
+Phase 9b — Google Chat Integration (Mar 15, 2026)
   Mar 15   Google Chat channel adapter (@agentrun-ai/channel-gchat)
            Workspace Add-on payload parser
            Markdown-to-HTML card formatter
@@ -3703,12 +3707,13 @@ standalone open-source project (`phbruce/agentrun`), licensed under AGPLv3.
 
 ### 4.12.1 Monorepo Structure
 
-AgentRun is organized as a pnpm/Turborepo monorepo with 9 npm packages and a Go binary:
+AgentRun is organized as a pnpm/Turborepo monorepo with 11 npm packages and a Go binary:
 
 | Package | Responsibility |
 |---------|---------------|
 | `@agentrun-ai/core` | Types, interfaces, provider registry, classifier, orchestrator, eval schema |
 | `@agentrun-ai/aws` | AWS providers (Bedrock, STS, DynamoDB, S3, SQS, Secrets Manager) |
+| `@agentrun-ai/gcp` | GCP providers (Vertex AI, Firestore, Cloud Storage, Pub/Sub, Secret Manager) |
 | `@agentrun-ai/tools-aws` | Declarative AWS infrastructure tools |
 | `@agentrun-ai/tools-github` | GitHub tools (PRs, commits) |
 | `@agentrun-ai/tools-jira` | Jira tools (issues, projects, transitions) |
@@ -3735,7 +3740,7 @@ registerToolFactory();
 Each provider implements a core interface: `LlmProvider`,
 `CredentialsProvider`, `SessionProvider`, `KnowledgeBaseProvider`, etc.
 This allows OSS users to swap AWS implementations for alternatives
-(GCP, Azure, self-hosted) without modifying the core.
+(GCP via `@agentrun-ai/gcp`, Azure, self-hosted) without modifying the core.
 
 > **Deployment examples**: The repository includes four examples demonstrating the platform's compute-agnostic design, each implementing the same `PlatformConfig` + `PlatformRegistry` pattern with different provider bindings:
 >
@@ -3744,7 +3749,7 @@ This allows OSS users to swap AWS implementations for alternatives
 > | `examples/aws-lambda/` | AWS Lambda + SAM | SQS | DynamoDB | Reference deployment with dedup table |
 > | `examples/slack-standalone/` | Fastify server | In-memory | In-memory | Single-process, no queue (background tasks) |
 > | `examples/docker/` | Docker + Fastify | In-memory | PostgreSQL | docker-compose with graceful shutdown |
-> | `examples/gcp-cloud-functions/` | GCP Cloud Functions | Pub/Sub | Firestore (planned) | Demonstrates non-AWS compute |
+> | `examples/gcp-cloud-functions/` | GCP Cloud Functions | Pub/Sub | Firestore | GCP-native deployment using `@agentrun-ai/gcp` |
 >
 > These examples validate the vendor-agnostic architecture in practice.
 

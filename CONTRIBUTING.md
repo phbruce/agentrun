@@ -16,7 +16,7 @@ Thank you for your interest in contributing to AgentRun. This guide will help yo
 git clone https://github.com/phbruce/agentrun.git
 cd agentrun
 pnpm install      # installs deps + sets up husky hooks automatically
-pnpm run build    # builds all 9 packages via Turbo
+pnpm run build    # builds all 11 packages via Turbo
 pnpm run typecheck # type-checks all packages
 ```
 
@@ -27,6 +27,7 @@ agentrun/
 ├── packages/
 │   ├── core/           # @agentrun-ai/core — orchestrator, RBAC, catalog, RAG
 │   ├── aws/            # @agentrun-ai/aws — Bedrock, DynamoDB, S3, SQS providers
+│   ├── gcp/            # @agentrun-ai/gcp — Vertex AI, Firestore, Cloud Storage, Pub/Sub providers
 │   ├── channel-slack/  # @agentrun-ai/channel-slack — Slack adapter
 │   ├── channel-gchat/  # @agentrun-ai/channel-gchat — Google Chat adapter
 │   ├── channel-mcp/    # @agentrun-ai/channel-mcp — MCP JSON-RPC server
@@ -85,7 +86,7 @@ type(scope): subject
 
 Use the package name without the `@agentrun-ai/` prefix:
 
-`core`, `aws`, `channel-slack`, `channel-gchat`, `channel-mcp`, `tools-aws`, `tools-github`, `tools-jira`, `cli`, `deps`, `release`
+`core`, `aws`, `gcp`, `channel-slack`, `channel-gchat`, `channel-mcp`, `tools-aws`, `tools-github`, `tools-jira`, `cli`, `deps`, `release`
 
 ### Examples
 
@@ -135,7 +136,7 @@ See existing tools in `packages/tools-github/src/` and `packages/tools-jira/src/
 
 ## Adding a New Provider Package
 
-AgentRun's core is cloud-agnostic. `@agentrun-ai/aws` is the reference implementation. To add support for another cloud (e.g., `@agentrun-ai/gcp`):
+AgentRun's core is cloud-agnostic. `@agentrun-ai/aws` is the reference implementation, and `@agentrun-ai/gcp` is the second complete implementation. To add support for another cloud (e.g., `@agentrun-ai/azure`):
 
 1. Create a new package under `packages/` (e.g., `packages/gcp/`)
 2. Depend on `@agentrun-ai/core` for the provider interfaces
@@ -158,7 +159,7 @@ AgentRun's core is cloud-agnostic. `@agentrun-ai/aws` is the reference implement
 5. Add the package to `pnpm-workspace.yaml`
 6. Update `commitlint.config.mjs` to include the new scope
 
-See `packages/aws/src/index.ts` for the registration pattern used by the reference implementation.
+See `packages/aws/src/index.ts` (AWS) and `packages/gcp/src/index.ts` (GCP) for the registration pattern used by existing implementations.
 
 ## Reporting Issues
 
