@@ -6,7 +6,7 @@ const handlers = ["events", "process", "mcp-server"];
 const sharedOptions = {
     bundle: true,
     platform: "node",
-    target: "node18",
+    target: "node20",
     format: "esm",
     sourcemap: true,
     minify: true,
@@ -19,6 +19,7 @@ const sharedOptions = {
         "@aws-sdk/client-ssm",
         "@aws-sdk/client-bedrock-runtime",
         "@aws-sdk/client-rds-data",
+        "@aws-sdk/client-secrets-manager",
     ],
     banner: {
         js: [

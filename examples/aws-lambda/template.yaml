@@ -20,6 +20,10 @@ Parameters:
   JiraSecretArn:
     Type: String
     Description: Secrets Manager ARN for the Jira API token
+  GChatSecretArn:
+    Type: String
+    Description: Secrets Manager ARN for the Google Chat service account key
+    Default: ""
   ManifestsBucket:
     Type: String
     Description: S3 bucket name for pack manifests
@@ -34,7 +38,7 @@ Parameters:
 
 Globals:
   Function:
-    Runtime: nodejs18.x
+    Runtime: nodejs20.x
     MemorySize: 512
     Timeout: 60
     Architectures:
@@ -158,6 +162,7 @@ Resources:
           AGENTRUN_SESSION_TABLE: !Ref SessionsTable
           AGENTRUN_USAGE_TABLE: !Ref UsageTable
           AGENTRUN_MANIFESTS_BUCKET: !Ref ManifestsBucket
+          AGENTRUN_GCHAT_SECRET_ARN: !Ref GChatSecretArn
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref SessionsTable
@@ -172,6 +177,7 @@ Resources:
                 - !Ref SlackSecretArn
                 - !Ref GitHubSecretArn
                 - !Ref JiraSecretArn
+                - !Ref GChatSecretArn
             - Effect: Allow
               Action: bedrock:InvokeModel
               Resource: "*"

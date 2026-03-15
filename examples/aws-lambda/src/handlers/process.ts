@@ -14,6 +14,7 @@ import {
 } from "@agentrun-ai/core";
 import type { ChannelContext } from "@agentrun-ai/core";
 import { SlackChannelAdapter } from "@agentrun-ai/channel-slack";
+import { GChatChannelAdapter } from "@agentrun-ai/channel-gchat";
 import "../setup.js";
 
 // ── Cold-start initialization ───────────────────────────────────────────────
@@ -40,6 +41,7 @@ const _bootstrap = bootstrapPlatform()
     });
 
 const slackAdapter = new SlackChannelAdapter();
+const gchatAdapter = new GChatChannelAdapter();
 
 // ── SQS Handler ─────────────────────────────────────────────────────────────
 
@@ -50,32 +52,64 @@ export async function handler(event: SQSEvent): Promise<SQSBatchResponse> {
     for (const record of event.Records) {
         try {
             const body = JSON.parse(record.body);
-            const { userId, channelId, text, responseUrl, threadTs, messageTs } = body;
+            const source = body.source ?? "slack";
 
-            const isDm = channelId?.startsWith("D") ?? false;
+            if (source === "gchat") {
+                const { userId, text, meta } = body;
+                const { spaceId, threadName, displayName } = meta ?? {};
 
-            console.info(`Processing query: user=${userId} channel=${channelId} isDm=${isDm}`);
+                console.info(`Processing GChat query: user=${userId} space=${spaceId}`);
 
-            // Build channel context — the orchestrator uses this to route responses
-            // back to the correct Slack thread and to manage session state.
-            const ctx: ChannelContext = {
-                requestId: record.messageId,
-                sessionId: threadTs
-                    ? `slack:${channelId}#${threadTs}`
-                    : `slack:${channelId}#${messageTs}`,
-                userId,
-                source: "slack",
-                query: text,
-                isPrivate: isDm,
-                responseUrl,
-                meta: {
-                    channelId: channelId ?? "",
-                    threadTs: threadTs ?? "",
-                    messageTs: messageTs ?? "",
-                },
-            };
+                // Load GChat secret on first use
+                if (process.env.AGENTRUN_GCHAT_SECRET_ARN && !process.env.GCHAT_SERVICE_ACCOUNT_KEY) {
+                    const { GetSecretValueCommand, SecretsManagerClient } = await import("@aws-sdk/client-secrets-manager");
+                    const sm = new SecretsManagerClient({ region: process.env.AWS_REGION });
+                    const res = await sm.send(new GetSecretValueCommand({ SecretId: process.env.AGENTRUN_GCHAT_SECRET_ARN }));
+                    if (res.SecretString) process.env.GCHAT_SERVICE_ACCOUNT_KEY = res.SecretString;
+                }
 
-            await processRequest({ ctx, adapter: slackAdapter });
+                const ctx: ChannelContext = {
+                    requestId: record.messageId,
+                    sessionId: threadName ? `gchat:${spaceId}#${threadName}` : `gchat:${spaceId}#${record.messageId}`,
+                    userId,
+                    source: "gchat",
+                    query: text,
+                    isPrivate: false,
+                    meta: {
+                        spaceId: spaceId ?? "",
+                        threadName: threadName ?? "",
+                        displayName: displayName ?? "",
+                    },
+                };
+
+                await processRequest({ ctx, adapter: gchatAdapter });
+            } else {
+                // Slack (default, backwards-compatible)
+                const { userId, channelId, text, responseUrl, threadTs, messageTs } = body;
+
+                const isDm = channelId?.startsWith("D") ?? false;
+
+                console.info(`Processing query: user=${userId} channel=${channelId} isDm=${isDm}`);
+
+                const ctx: ChannelContext = {
+                    requestId: record.messageId,
+                    sessionId: threadTs
+                        ? `slack:${channelId}#${threadTs}`
+                        : `slack:${channelId}#${messageTs}`,
+                    userId,
+                    source: "slack",
+                    query: text,
+                    isPrivate: isDm,
+                    responseUrl,
+                    meta: {
+                        channelId: channelId ?? "",
+                        threadTs: threadTs ?? "",
+                        messageTs: messageTs ?? "",
+                    },
+                };
+
+                await processRequest({ ctx, adapter: slackAdapter });
+            }
         } catch (error: any) {
             console.error(`Process failed for message ${record.messageId}:`, error.message);
             batchItemFailures.push({ itemIdentifier: record.messageId });

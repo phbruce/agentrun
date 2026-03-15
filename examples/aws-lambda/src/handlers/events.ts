@@ -132,7 +132,9 @@ function extractActionText(payload: SlackInteractionPayload): string | null {
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyStructuredResultV2> {
     try {
         await _bootstrap;
-        const rawBody = event.body || "";
+        const rawBody = event.isBase64Encoded
+            ? Buffer.from(event.body || "", "base64").toString("utf-8")
+            : (event.body || "");
 
         // ── Slack Interactions (block_actions from buttons/dropdowns) ──
         if (rawBody.startsWith("payload=")) {
