@@ -1,6 +1,6 @@
 {
   "name": "@agentrun-ai/core",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Core runtime: orchestrator, RBAC, catalog, channels, platform abstraction",
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -53,7 +53,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "publishConfig": {
     "access": "public"
