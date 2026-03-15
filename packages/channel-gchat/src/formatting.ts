@@ -215,22 +215,14 @@ export async function formatGreetingCard(displayName: string, role: string, user
 
     const sections: GChatSection[] = [{ widgets: profileWidgets }];
 
-    // Skills as buttons (mirrors Slack shortcuts)
+    // Skills as text list (Google Chat Cards V2 action buttons
+    // require a registered action handler — use text shortcuts instead)
     const skills = getSkillsForRole(role);
     if (skills.length > 0) {
-        const buttons: GChatButton[] = skills.map((s) => ({
-            text: s.command,
-            onClick: {
-                action: {
-                    function: "skill_invoke",
-                    parameters: [{ key: "command", value: s.command }],
-                },
-            },
-        }));
-
+        const skillList = skills.map((s) => `• <b>${s.command}</b>`).join("\n");
         sections.push({
             header: "Atalhos",
-            widgets: [{ buttonList: { buttons } }],
+            widgets: [textWidget(skillList)],
         });
     }
 
