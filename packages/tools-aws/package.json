@@ -1,6 +1,6 @@
 {
   "name": "@agentrun-ai/tools-aws",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AWS infrastructure tools: EKS, RDS, Lambda, CloudWatch, SQS monitoring + declarative tool engine",
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -50,7 +50,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "publishConfig": {
     "access": "public"
