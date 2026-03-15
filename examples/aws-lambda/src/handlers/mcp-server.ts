@@ -123,11 +123,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
         // ── MCP Protocol Methods ──
         switch (method) {
             case "initialize": {
-                return jsonResponse(200, jsonRpcResult(id, {
-                    protocolVersion: "2024-11-05",
-                    capabilities: { tools: { listChanged: false } },
-                    serverInfo: { name: "agentrun", version: "0.1.0" },
-                }));
+                return {
+                    statusCode: 200,
+                    headers: { "Content-Type": "application/json", "Mcp-Protocol-Version": "2025-03-26" },
+                    body: JSON.stringify(jsonRpcResult(id, {
+                        protocolVersion: "2025-03-26",
+                        capabilities: { tools: { listChanged: false } },
+                        serverInfo: { name: "agentrun", version: "0.2.0" },
+                    })),
+                };
             }
 
             case "tools/list": {
@@ -164,7 +168,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
             }
 
             case "notifications/initialized": {
-                return jsonResponse(200, jsonRpcResult(id, {}));
+                return { statusCode: 202, headers: { "Content-Type": "application/json" }, body: "" };
             }
 
             case "agent/card": {

@@ -16,7 +16,7 @@ Slack ──> API Gateway ──> events Lambda ──> SQS ──> process Lamb
 
 ## Prerequisites
 
-- Node.js >= 18
+- Node.js >= 20
 - AWS CLI v2 configured with appropriate IAM permissions
 - AWS SAM CLI (`brew install aws-sam-cli`)
 - A Slack app with Events API and Interactivity enabled
