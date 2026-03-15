@@ -60,11 +60,16 @@ interface ServiceAccountKey {
 
 function getServiceAccountKey(): ServiceAccountKey | undefined {
     const raw = process.env.GCHAT_SERVICE_ACCOUNT_KEY;
-    if (!raw) return undefined;
+    if (!raw) {
+        logger.error("GCHAT_SERVICE_ACCOUNT_KEY env var is not set");
+        return undefined;
+    }
     try {
-        return JSON.parse(raw) as ServiceAccountKey;
-    } catch {
-        logger.error("GCHAT_SERVICE_ACCOUNT_KEY is not valid JSON");
+        const parsed = JSON.parse(raw) as ServiceAccountKey;
+        logger.info({ email: parsed.client_email }, "GChat service account loaded");
+        return parsed;
+    } catch (e) {
+        logger.error({ err: (e as Error).message, length: raw.length }, "GCHAT_SERVICE_ACCOUNT_KEY is not valid JSON");
         return undefined;
     }
 }
@@ -168,14 +173,27 @@ export async function postMessage(
         body.thread = { name: threadName };
     }
     const queryParams = threadName ? "?messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD" : "";
-    return apiRequest("POST", `/spaces/${spaceId}/messages${queryParams}`, body) as Promise<GChatMessage | undefined>;
+    // spaceId comes as "spaces/XXXXX" from Google Chat events
+    // The Chat API v1 expects: /v1/spaces/{spaceId}/messages
+    // BASE_URL already includes /v1, so we need /spaces/{id}/messages
+    const normalizedSpace = spaceId.startsWith("spaces/") ? spaceId : `spaces/${spaceId}`;
+    return apiRequest("POST", `/${normalizedSpace}/messages${queryParams}`, body) as Promise<GChatMessage | undefined>;
 }
 
 /**
  * Update an existing message's text content.
  */
 export async function updateMessage(messageName: string, text: string): Promise<GChatMessage | undefined> {
-    return apiRequest("PATCH", `/${messageName}?updateMask=text`, { text }) as Promise<GChatMessage | undefined>;
+    const normalizedName = messageName.startsWith("spaces/") ? messageName : `spaces/${messageName}`;
+    return apiRequest("PATCH", `/${normalizedName}?updateMask=text`, { text }) as Promise<GChatMessage | undefined>;
+}
+
+/**
+ * Delete a message.
+ */
+export async function deleteMessage(messageName: string): Promise<void> {
+    const normalizedName = messageName.startsWith("spaces/") ? messageName : `spaces/${messageName}`;
+    await apiRequest("DELETE", `/${normalizedName}`);
 }
 
 /**
@@ -193,5 +211,6 @@ export async function createCardMessage(
         body.thread = { name: threadName };
     }
     const queryParams = threadName ? "?messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD" : "";
-    return apiRequest("POST", `/spaces/${spaceId}/messages${queryParams}`, body) as Promise<GChatMessage | undefined>;
+    const normalizedSpace = spaceId.startsWith("spaces/") ? spaceId : `spaces/${spaceId}`;
+    return apiRequest("POST", `/${normalizedSpace}/messages${queryParams}`, body) as Promise<GChatMessage | undefined>;
 }

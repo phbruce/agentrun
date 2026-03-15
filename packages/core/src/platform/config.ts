@@ -154,7 +154,7 @@ export function buildDefaultConfig(): PlatformConfig {
         metadata: { name: process.env.AGENTRUN_NAME ?? "agentrun" },
         spec: {
             providers: {
-                llm: { type: "bedrock", config: { region: REGION, defaultModel: "us.anthropic.claude-sonnet-4-20250514-v1:0", complexModel: "us.anthropic.claude-sonnet-4-5-20250929-v1:0" } },
+                llm: { type: "bedrock", config: { region: REGION, defaultModel: process.env.AGENTRUN_DEFAULT_MODEL ?? "us.anthropic.claude-sonnet-4-20250514-v1:0", complexModel: process.env.AGENTRUN_COMPLEX_MODEL ?? "us.anthropic.claude-sonnet-4-5-20250929-v1:0" } },
                 credentials: { type: "aws-sts", config: { region: REGION, roleArnPattern: `arn:aws:iam::${ACCOUNT_ID}:role/agentrun-role-{{ role }}` } },
                 session: { type: "dynamodb", config: { tableName: process.env.AGENTRUN_SESSIONS_TABLE ?? "agentrun-sessions", ttlDays: 7 } },
                 usage: { type: "dynamodb", config: { tableName: process.env.AGENTRUN_USAGE_TABLE ?? "agentrun-usage" } },

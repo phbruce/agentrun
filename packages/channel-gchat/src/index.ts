@@ -6,7 +6,7 @@
 export { GChatChannelAdapter } from "./adapter.js";
 
 // Google Chat API client
-export { postMessage, createCardMessage, updateMessage } from "./gchatClient.js";
+export { postMessage, createCardMessage, updateMessage, deleteMessage } from "./gchatClient.js";
 export type { GChatCard, GChatSection, GChatWidget, GChatButton } from "./gchatClient.js";
 
 // Formatting helpers

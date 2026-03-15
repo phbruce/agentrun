@@ -9,3 +9,5 @@ coverage/
 *.tgz
 .pack-output/
 .workplan.md
+.gchat-infra.md
+.env

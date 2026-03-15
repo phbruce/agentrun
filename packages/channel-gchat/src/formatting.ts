@@ -1,7 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { AgentResult } from "@agentrun-ai/core";
-import type { GChatCard, GChatSection, GChatWidget } from "./gchatClient.js";
+import {
+    getRoleForUser,
+    getDisplayName,
+    getSkillsForRole,
+    getUseCasesForRole,
+    getMonthlyUsage,
+    classifyQuery,
+} from "@agentrun-ai/core";
+import type { ResponseCategory } from "@agentrun-ai/core";
+import type { GChatCard, GChatSection, GChatWidget, GChatButton } from "./gchatClient.js";
+
+// ---------------------------------------------------------------------------
+// Category labels (mirrors Slack formatting)
+// ---------------------------------------------------------------------------
+
+const CATEGORY_LABELS: Record<Exclude<ResponseCategory, "greeting">, string> = {
+    lambda: "Lambda",
+    kubernetes: "Kubernetes",
+    database: "Database",
+    logs: "Logs",
+    pull_requests: "Pull Requests",
+    metrics: "Metrics",
+    sqs: "SQS",
+    generic: "Infrastructure",
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -17,26 +41,30 @@ function truncate(text: string, max: number): string {
     return text.length <= max ? text : text.slice(0, max - 3) + "...";
 }
 
+function markdownToHtml(text: string): string {
+    return text
+        .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")       // **bold**
+        .replace(/\*(.+?)\*/g, "<b>$1</b>")            // *bold*
+        .replace(/__(.+?)__/g, "<i>$1</i>")             // __italic__
+        .replace(/`([^`]+)`/g, "<font face=\"monospace\">$1</font>") // `code`
+        .replace(/^#+\s+(.+)$/gm, "<b>$1</b>")         // # Headers
+        .replace(/^[-*]\s+/gm, "• ")                    // - list items
+        .replace(/^\d+\.\s+/gm, (m) => m)               // 1. keep numbered
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>'); // [text](url)
+}
+
 function textWidget(text: string): GChatWidget {
-    return { textParagraph: { text } };
+    return { textParagraph: { text: markdownToHtml(text) } };
 }
 
 function decoratedWidget(topLabel: string, text: string): GChatWidget {
-    return { decoratedText: { topLabel, text } };
+    return { decoratedText: { topLabel, text: markdownToHtml(text) } };
 }
 
 // ---------------------------------------------------------------------------
 // Markdown → Card sections
 // ---------------------------------------------------------------------------
 
-/**
- * Parse a markdown answer into GChat card sections.
- *
- * - Splits on `---` to create separate sections
- * - Code blocks are wrapped in backticks (GChat renders monospace)
- * - `Key: Value` pairs become decoratedText widgets
- * - Regular text becomes textParagraph widgets
- */
 function parseMarkdownToSections(markdown: string): GChatSection[] {
     const rawSections = markdown.split(/\n---\n|\n---$|^---\n/);
     const sections: GChatSection[] = [];
@@ -63,12 +91,10 @@ function parseMarkdownToSections(markdown: string): GChatSection[] {
         for (const line of lines) {
             if (line.trimStart().startsWith("```")) {
                 if (inCodeBlock) {
-                    // End of code block
                     textBuffer.push(line);
                     flushText();
                     inCodeBlock = false;
                 } else {
-                    // Start of code block
                     flushText();
                     inCodeBlock = true;
                     textBuffer.push(line);
@@ -81,7 +107,7 @@ function parseMarkdownToSections(markdown: string): GChatSection[] {
                 continue;
             }
 
-            // Detect Key: Value pairs (capitalized key, colon, value)
+            // Detect Key: Value pairs
             const fieldMatch = line.match(/^(\*?[A-Z\u00C0-\u00D6\u00D8-\u00DD][^:*\n]{1,48}\*?):\s+(.+)$/);
             if (fieldMatch) {
                 flushText();
@@ -108,33 +134,40 @@ function parseMarkdownToSections(markdown: string): GChatSection[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Convert an AgentResult into a Google Chat card.
+ * Format an AgentResult as a Google Chat card.
+ * Mirrors the Slack formatting: profile header, content, footer with metadata.
  */
-export function formatAgentResponse(result: AgentResult): GChatCard {
+export function formatAgentResponse(result: AgentResult, userId?: string, source?: string): GChatCard {
     const sections = parseMarkdownToSections(result.answer);
 
-    // Footer section with metadata
+    // Determine category for label
+    const category = classifyQuery(result.answer.slice(0, 100));
+    const label = category !== "greeting" ? CATEGORY_LABELS[category] : "Infrastructure";
+
+    // Profile header section
+    const displayName = userId && source ? getDisplayName(userId, source) : "Usuário";
+    const headerSection: GChatSection = {
+        widgets: [
+            decoratedWidget("User", displayName),
+        ],
+    };
+
+    // Footer section with metadata (mirrors Slack footer)
     const dedupedTools = Array.from(new Set(result.toolsUsed.map((t) => t.tool.replace(/^mcp__[^_]+__/, ""))));
     const toolList = dedupedTools.length > 0 ? dedupedTools.join(", ") : "none";
     const total = result.inputTokens + result.outputTokens;
     const tokens = total > 0 ? formatTokenCount(total) : "--";
     const duration = (result.durationMs / 1000).toFixed(1);
 
-    const footerWidgets: GChatWidget[] = [
-        { divider: {} },
-        textWidget(`<i>Tools: ${toolList} | ${duration}s | ${tokens} tokens</i>`),
-    ];
-
-    // Append footer to last section or create new one
-    if (sections.length > 0) {
-        sections[sections.length - 1].widgets.push(...footerWidgets);
-    } else {
-        sections.push({ widgets: footerWidgets });
-    }
+    const footerSection: GChatSection = {
+        widgets: [
+            textWidget(`<i>${label} | ${toolList} | ${duration}s | ${tokens} tokens</i>`),
+        ],
+    };
 
     return {
-        header: { title: "AgentRun" },
-        sections,
+        header: { title: "InfraBot", subtitle: label },
+        sections: [headerSection, ...sections, footerSection],
     };
 }
 
@@ -143,7 +176,7 @@ export function formatAgentResponse(result: AgentResult): GChatCard {
  */
 export function formatErrorResponse(error: string): GChatCard {
     return {
-        header: { title: "AgentRun", subtitle: "Erro" },
+        header: { title: "InfraBot", subtitle: "Erro" },
         sections: [
             {
                 widgets: [
@@ -155,34 +188,80 @@ export function formatErrorResponse(error: string): GChatCard {
 }
 
 /**
- * Create a greeting card for new users / DMs.
+ * Create a greeting card with profile, usage, skills, and use-cases.
+ * Mirrors the Slack greeting: user info, shortcuts, available queries.
  */
-export function formatGreetingCard(displayName: string, role: string): GChatCard {
-    return {
-        header: {
-            title: "AgentRun",
-            subtitle: `Bem-vindo, ${displayName}`,
-        },
-        sections: [
-            {
-                widgets: [
-                    decoratedWidget("User", displayName),
-                    decoratedWidget("Role", role),
-                ],
+export async function formatGreetingCard(displayName: string, role: string, userId?: string, source?: string): Promise<GChatCard> {
+    // Profile section
+    const profileWidgets: GChatWidget[] = [
+        decoratedWidget("User", displayName),
+        decoratedWidget("Role", role),
+    ];
+
+    // Monthly usage
+    if (userId) {
+        try {
+            const usage = await getMonthlyUsage(userId);
+            if (usage.queryCount > 0) {
+                const total = usage.inputTokens + usage.outputTokens;
+                profileWidgets.push(
+                    decoratedWidget("Uso mensal", `${formatTokenCount(total)} tokens (${usage.queryCount} ${usage.queryCount !== 1 ? "consultas" : "consulta"})`),
+                );
+            }
+        } catch {
+            // Usage store unavailable
+        }
+    }
+
+    const sections: GChatSection[] = [{ widgets: profileWidgets }];
+
+    // Skills as buttons (mirrors Slack shortcuts)
+    const skills = getSkillsForRole(role);
+    if (skills.length > 0) {
+        const buttons: GChatButton[] = skills.map((s) => ({
+            text: s.command,
+            onClick: {
+                action: {
+                    actionMethodName: "skill_invoke",
+                    parameters: [{ key: "command", value: s.command }],
+                },
             },
-            {
-                header: "Como usar",
-                widgets: [
-                    textWidget(
-                        "Envie uma mensagem neste chat para consultar a infraestrutura. " +
-                        "Exemplos:\n" +
-                        "- <i>/health-check</i> -- status geral\n" +
-                        "- <i>/lambda-find nome</i> -- detalhes de uma Lambda\n" +
-                        "- <i>/dlq-alert</i> -- filas com mensagens pendentes\n" +
-                        "- <i>/deploy-status</i> -- PRs e commits recentes",
-                    ),
-                ],
-            },
+        }));
+
+        sections.push({
+            header: "Atalhos",
+            widgets: [{ buttonList: { buttons } }],
+        });
+    }
+
+    // Use-cases list (mirrors Slack dropdown)
+    const useCases = getUseCasesForRole(role);
+    if (useCases.length > 0) {
+        const ucWidgets: GChatWidget[] = useCases.map((uc) =>
+            textWidget(`<b>${uc.name}</b>\n${uc.description}`),
+        );
+        sections.push({
+            header: "Consultas disponíveis",
+            widgets: ucWidgets,
+        });
+    }
+
+    // How to use
+    sections.push({
+        header: "Como usar",
+        widgets: [
+            textWidget(
+                "Envie uma mensagem para consultar a infraestrutura. Exemplos:\n" +
+                "- <i>/health-check</i> — status geral\n" +
+                "- <i>/lambda-find nome</i> — detalhes de uma Lambda\n" +
+                "- <i>/dlq-alert</i> — filas com mensagens pendentes\n" +
+                "- <i>/deploy-status</i> — PRs e commits recentes",
+            ),
         ],
+    });
+
+    return {
+        header: { title: "InfraBot", subtitle: `Bem-vindo, ${displayName}` },
+        sections,
     };
 }

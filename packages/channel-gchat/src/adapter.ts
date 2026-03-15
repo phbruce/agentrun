@@ -2,15 +2,15 @@
 
 import type { ChannelAdapter, ChannelContext, AgentResult } from "@agentrun-ai/core";
 import { getDisplayName, getRoleForUser } from "@agentrun-ai/core";
-import { postMessage, createCardMessage, updateMessage } from "./gchatClient.js";
+import { postMessage, createCardMessage, deleteMessage } from "./gchatClient.js";
 import { formatAgentResponse, formatErrorResponse, formatGreetingCard } from "./formatting.js";
 
 /**
  * Google Chat channel adapter for AgentRun.
  *
  * Translates agent lifecycle events into Google Chat interactions:
- * - "Processando..." placeholder message on start
- * - Card messages for results and greetings
+ * - "Analisando..." placeholder in the thread on start
+ * - Card messages for results and greetings (with profile, tools, usage)
  * - Message updates for replacing placeholder content
  *
  * Expected `ctx.meta` keys:
@@ -21,45 +21,48 @@ import { formatAgentResponse, formatErrorResponse, formatGreetingCard } from "./
 export class GChatChannelAdapter implements ChannelAdapter {
     async onProcessingStart(ctx: ChannelContext): Promise<void> {
         const { spaceId, threadName } = ctx.meta;
-        if (spaceId) {
-            const msg = await postMessage(spaceId, "Processando...", threadName || undefined);
+        if (!spaceId) return;
+        try {
+            const msg = await postMessage(spaceId, "Analisando...", threadName || undefined);
             if (msg?.name) {
                 ctx.meta.pendingMessageName = msg.name;
             }
+        } catch {
+            // Non-critical
         }
     }
 
     async deliverResult(ctx: ChannelContext, result: AgentResult): Promise<void> {
-        const { spaceId, threadName } = ctx.meta;
-        const card = formatAgentResponse(result);
+        const { spaceId, threadName, pendingMessageName } = ctx.meta;
+        if (!spaceId) return;
 
-        if (ctx.meta.pendingMessageName) {
-            // Update the placeholder message with the real answer
-            await updateMessage(ctx.meta.pendingMessageName, result.answer);
-        } else if (spaceId) {
-            await createCardMessage(spaceId, card, threadName || undefined);
+        // Delete placeholder, then send formatted card
+        if (pendingMessageName) {
+            deleteMessage(pendingMessageName).catch(() => {});
         }
+        const card = formatAgentResponse(result, ctx.userId, ctx.source);
+        await createCardMessage(spaceId, card, threadName || undefined);
     }
 
     async deliverError(ctx: ChannelContext, error: string): Promise<void> {
-        const { spaceId, threadName } = ctx.meta;
-        const card = formatErrorResponse(error);
+        const { spaceId, threadName, pendingMessageName } = ctx.meta;
+        if (!spaceId) return;
 
-        if (ctx.meta.pendingMessageName) {
-            await updateMessage(ctx.meta.pendingMessageName, `Erro: ${error}`);
-        } else if (spaceId) {
-            await createCardMessage(spaceId, card, threadName || undefined);
+        // Delete placeholder, then send error card
+        if (pendingMessageName) {
+            deleteMessage(pendingMessageName).catch(() => {});
         }
+        const errorCard = formatErrorResponse(error);
+        await createCardMessage(spaceId, errorCard, threadName || undefined);
     }
 
     async deliverGreeting(ctx: ChannelContext): Promise<void> {
         const { spaceId, threadName } = ctx.meta;
+        if (!spaceId) return;
         const displayName = getDisplayName(ctx.userId, ctx.source);
         const role = getRoleForUser(ctx.userId, ctx.source);
-        const card = formatGreetingCard(displayName, role);
-        if (spaceId) {
-            await createCardMessage(spaceId, card, threadName || undefined);
-        }
+        const card = await formatGreetingCard(displayName, role, ctx.userId, ctx.source);
+        await createCardMessage(spaceId, card, threadName || undefined);
     }
 
     async onProcessingComplete(_ctx: ChannelContext): Promise<void> {
