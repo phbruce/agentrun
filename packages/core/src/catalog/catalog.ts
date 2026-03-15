@@ -244,27 +244,40 @@ export async function getMcpToolNamesForRoleWithPacks(role: Role, packs: string[
 // Scope-based filtering (for MCP server ?scope= query parameter)
 // ---------------------------------------------------------------------------
 
-const SCOPE_USE_CASES: Record<string, string[]> = {
-    aws: ["infra-health", "lambda-debug", "cluster-status", "database-status", "log-investigation", "sqs-monitor", "billing"],
-    github: ["code-review", "deployment-tracking"],
-    jira: ["jira-tracking"],
-};
+/**
+ * Build scope → use-case mapping from the catalog.
+ * Use-cases declare their scope via `spec.scope` in the YAML manifest.
+ * This replaces the previous hardcoded SCOPE_USE_CASES map.
+ */
+function buildScopeMap(catalog: ManifestCatalog): Record<string, string[]> {
+    const scopeMap: Record<string, string[]> = {};
+    for (const uc of catalog.useCases.values()) {
+        if (uc.scope) {
+            if (!scopeMap[uc.scope]) scopeMap[uc.scope] = [];
+            scopeMap[uc.scope].push(uc.name);
+        }
+    }
+    return scopeMap;
+}
 
 /**
  * Get MCP tool registry names filtered by scope (use-case grouping).
  * Used by the MCP server when `?scope=aws|github|jira` is passed.
+ * Scopes are derived from `spec.scope` in use-case manifests.
  * Falls back to full role-based filtering if scope is unknown.
  */
 export async function getMcpToolNamesForScope(
     role: Role, packs: string[], scope: string,
 ): Promise<string[]> {
-    const scopeUseCases = SCOPE_USE_CASES[scope];
+    const catalog = await getCatalogForPacks(packs);
+    const scopeMap = buildScopeMap(catalog);
+    const scopeUseCases = scopeMap[scope];
+
     if (!scopeUseCases) {
         // Unknown scope: fall back to full role-based filtering
         return getMcpToolNamesForRoleWithPacks(role, packs);
     }
 
-    const catalog = await getCatalogForPacks(packs);
     const { allowedUseCases } = getRoleUseCaseConfig(role);
 
     // Intersect: only use-cases in BOTH the scope AND the role
@@ -274,20 +287,6 @@ export async function getMcpToolNamesForScope(
     for (const ucName of filtered) {
         const uc = catalog.useCases.get(ucName);
         if (!uc) continue;
-        for (const wfName of uc.workflows) {
-            const wf = catalog.workflows.get(wfName);
-            if (!wf) continue;
-            for (const t of wf.tools) {
-                const tool = catalog.tools.get(t);
-                if (tool && REGISTRY_TOOL_TYPES.has(tool.type)) toolNames.add(tool.name);
-            }
-        }
-    }
-
-    // Also include pack extension tools that match the scope use-cases
-    for (const uc of catalog.useCases.values()) {
-        if (!scopeUseCases.includes(uc.name)) continue;
-        if (filtered.includes(uc.name)) continue; // already processed above
         for (const wfName of uc.workflows) {
             const wf = catalog.workflows.get(wfName);
             if (!wf) continue;
