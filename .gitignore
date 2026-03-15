@@ -12,3 +12,7 @@ coverage/
 .gchat-infra.md
 .env
 bridge/agentrun-bridge
+*.pem
+*.key
+credentials*
+/tmp/
