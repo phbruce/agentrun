@@ -40,11 +40,15 @@ const _bootstrap = bootstrapPlatform()
     });
 
 // ── Google Chat types ───────────────────────────────────────────────────────
+// Google Workspace Add-on format (chat.messagePayload envelope)
 
 interface GChatUser {
     name: string;
     displayName: string;
+    avatarUrl?: string;
     email: string;
+    type: string;
+    domainId?: string;
 }
 
 interface GChatMessage {
@@ -57,16 +61,82 @@ interface GChatMessage {
 
 interface GChatSpace {
     name: string;
-    displayName: string;
-    type: "DM" | "ROOM";
+    type: "DM" | "ROOM" | string;
+    singleUserBotDm?: boolean;
+    spaceType?: string;
 }
 
+// Workspace Add-on envelope format
 interface GChatEvent {
-    type: "MESSAGE" | "ADDED_TO_SPACE" | "REMOVED_FROM_SPACE" | "CARD_CLICKED";
-    eventTime: string;
-    space: GChatSpace;
+    // Legacy format (non-addon)
+    type?: "MESSAGE" | "ADDED_TO_SPACE" | "REMOVED_FROM_SPACE" | "CARD_CLICKED";
+    eventTime?: string;
+    space?: GChatSpace;
     message?: GChatMessage;
-    user: GChatUser;
+    user?: GChatUser;
+    // Workspace Add-on format
+    chat?: {
+        user: GChatUser;
+        eventTime: string;
+        messagePayload?: {
+            space: GChatSpace;
+            message: GChatMessage;
+        };
+        addedToSpacePayload?: {
+            space: GChatSpace;
+        };
+        removedFromSpacePayload?: {
+            space: GChatSpace;
+        };
+    };
+    commonEventObject?: {
+        hostApp: string;
+        platform: string;
+        userLocale: string;
+    };
+}
+
+// Normalize both formats into a common shape
+function parseEvent(raw: GChatEvent): {
+    eventType: string;
+    space: GChatSpace | undefined;
+    message: GChatMessage | undefined;
+    user: GChatUser | undefined;
+} {
+    // Workspace Add-on format
+    if (raw.chat) {
+        if (raw.chat.messagePayload) {
+            return {
+                eventType: "MESSAGE",
+                space: raw.chat.messagePayload.space,
+                message: raw.chat.messagePayload.message,
+                user: raw.chat.user,
+            };
+        }
+        if (raw.chat.addedToSpacePayload) {
+            return {
+                eventType: "ADDED_TO_SPACE",
+                space: raw.chat.addedToSpacePayload.space,
+                message: undefined,
+                user: raw.chat.user,
+            };
+        }
+        if (raw.chat.removedFromSpacePayload) {
+            return {
+                eventType: "REMOVED_FROM_SPACE",
+                space: raw.chat.removedFromSpacePayload.space,
+                message: undefined,
+                user: raw.chat.user,
+            };
+        }
+    }
+    // Legacy format
+    return {
+        eventType: raw.type ?? "UNKNOWN",
+        space: raw.space,
+        message: raw.message,
+        user: raw.user,
+    };
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -143,10 +213,12 @@ app.get("/health", async () => ({ status: "ok", uptime: process.uptime() }));
 app.post("/gchat", async (request, reply) => {
     await _bootstrap;
 
-    const event = request.body as GChatEvent;
+    console.info("GChat event received:", JSON.stringify(request.body, null, 2));
+    const raw = request.body as GChatEvent;
+    const event = parseEvent(raw);
 
     // Handle bot added to space — send greeting
-    if (event.type === "ADDED_TO_SPACE") {
+    if (event.eventType === "ADDED_TO_SPACE" && event.space && event.user) {
         const spaceId = event.space.name;
         const ctx: ChannelContext = {
             requestId: crypto.randomUUID(),
@@ -162,12 +234,13 @@ app.post("/gchat", async (request, reply) => {
     }
 
     // Handle bot removed — no-op
-    if (event.type === "REMOVED_FROM_SPACE") {
+    if (event.eventType === "REMOVED_FROM_SPACE") {
         return reply.code(200).send({});
     }
 
     // Only process MESSAGE events with text
-    if (event.type !== "MESSAGE" || !event.message?.text) {
+    if (event.eventType !== "MESSAGE" || !event.message?.text || !event.space || !event.user) {
+        console.info("Ignoring event:", event.eventType);
         return reply.code(200).send({});
     }
 
@@ -183,7 +256,7 @@ app.post("/gchat", async (request, reply) => {
     const spaceId = event.space.name;
     const threadName = msg.thread?.name ?? "";
     const userId = event.user.email || event.user.name;
-    const isDm = event.space.type === "DM";
+    const isDm = event.space.type === "DM" || event.space.spaceType === "DIRECT_MESSAGE";
     const text = isDm ? msg.text.trim() : cleanMentionText(msg.text);
 
     if (!text) {
@@ -197,7 +270,7 @@ app.post("/gchat", async (request, reply) => {
         text,
         threadName,
         messageId: eventId,
-        displayName: event.user.displayName,
+        displayName: event.user?.displayName ?? "",
     }));
 
     // Return empty JSON — the adapter will send messages asynchronously
