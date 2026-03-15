@@ -2,7 +2,7 @@
 
 import type { ChannelAdapter, ChannelContext, AgentResult } from "@agentrun-ai/core";
 import { getDisplayName, getRoleForUser } from "@agentrun-ai/core";
-import { postMessage, createCardMessage, deleteMessage } from "./gchatClient.js";
+import { createCardMessage } from "./gchatClient.js";
 import { formatAgentResponse, formatErrorResponse, formatGreetingCard } from "./formatting.js";
 
 /**
@@ -19,39 +19,21 @@ import { formatAgentResponse, formatErrorResponse, formatGreetingCard } from "./
  * - `pendingMessageName` — set internally after sending the placeholder
  */
 export class GChatChannelAdapter implements ChannelAdapter {
-    async onProcessingStart(ctx: ChannelContext): Promise<void> {
-        const { spaceId, threadName } = ctx.meta;
-        if (!spaceId) return;
-        try {
-            const msg = await postMessage(spaceId, "Analisando...", threadName || undefined);
-            if (msg?.name) {
-                ctx.meta.pendingMessageName = msg.name;
-            }
-        } catch {
-            // Non-critical
-        }
+    async onProcessingStart(_ctx: ChannelContext): Promise<void> {
+        // No placeholder — Google Chat shows "Message deleted" when we delete,
+        // and doesn't support emoji reactions. The card arrives directly.
     }
 
     async deliverResult(ctx: ChannelContext, result: AgentResult): Promise<void> {
-        const { spaceId, threadName, pendingMessageName } = ctx.meta;
+        const { spaceId, threadName } = ctx.meta;
         if (!spaceId) return;
-
-        // Delete placeholder, then send formatted card
-        if (pendingMessageName) {
-            deleteMessage(pendingMessageName).catch(() => {});
-        }
         const card = formatAgentResponse(result, ctx.userId, ctx.source);
         await createCardMessage(spaceId, card, threadName || undefined);
     }
 
     async deliverError(ctx: ChannelContext, error: string): Promise<void> {
-        const { spaceId, threadName, pendingMessageName } = ctx.meta;
+        const { spaceId, threadName } = ctx.meta;
         if (!spaceId) return;
-
-        // Delete placeholder, then send error card
-        if (pendingMessageName) {
-            deleteMessage(pendingMessageName).catch(() => {});
-        }
         const errorCard = formatErrorResponse(error);
         await createCardMessage(spaceId, errorCard, threadName || undefined);
     }

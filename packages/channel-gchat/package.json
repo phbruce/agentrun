@@ -1,6 +1,6 @@
 {
   "name": "@agentrun-ai/channel-gchat",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Google Chat channel adapter for AgentRun",
   "license": "AGPL-3.0-only",
   "type": "module",
