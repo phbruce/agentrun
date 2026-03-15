@@ -3579,6 +3579,13 @@ Phase 8 — Scope Rename & Eval (Mar 7-13, 2026)
   Mar 12   API Gateway auto-create path segments (lambda-module v2.7.0)
   Mar 13   Node 18 dropped from CI (AWS SDK requires >=20)
            Book overhauled: de-Lambda-ization, code drift fixes
+
+Phase 9 — Google Chat Integration (Mar 15, 2026)
+  Mar 15   Google Chat channel adapter (@agentrun-ai/channel-gchat)
+           Workspace Add-on payload parser
+           Markdown-to-HTML card formatter
+           Cross-channel user lookup (email fallback)
+           Core: CLAUDE_CODE_EXECUTABLE, model env var overrides
 ```
 
 ### 4.11.2 Architectural Decision Records
@@ -3674,7 +3681,7 @@ standalone open-source project (`phbruce/agentrun`), licensed under AGPLv3.
 
 ### 4.12.1 Monorepo Structure
 
-AgentRun is organized as a pnpm/Turborepo monorepo with 8 npm packages and a Go binary:
+AgentRun is organized as a pnpm/Turborepo monorepo with 9 npm packages and a Go binary:
 
 | Package | Responsibility |
 |---------|---------------|
@@ -3684,6 +3691,7 @@ AgentRun is organized as a pnpm/Turborepo monorepo with 8 npm packages and a Go 
 | `@agentrun-ai/tools-github` | GitHub tools (PRs, commits) |
 | `@agentrun-ai/tools-jira` | Jira tools (issues, projects, transitions) |
 | `@agentrun-ai/channel-slack` | Slack channel adapter |
+| `@agentrun-ai/channel-gchat` | Google Chat channel adapter (Workspace Add-on) |
 | `@agentrun-ai/channel-mcp` | MCP JSON-RPC channel adapter |
 | `@agentrun-ai/cli` | CLI for validation, eval, ingestion, and pack management |
 | `bridge/` (Go) | MCP stdin/stdout proxy with OAuth and OS keychain integration |
@@ -4532,6 +4540,9 @@ AgentRun uses environment variables for runtime configuration. All platform-spec
 | `AGENTRUN_ENV` | Environment (`prd`, `stg`, `dev`) |
 | `LOG_LEVEL` | Log verbosity (`debug`, `info`, `warn`, `error`) |
 | `ANTHROPIC_MODEL` | LLM model ID for agent reasoning |
+| `CLAUDE_CODE_EXECUTABLE` | Path to Claude Code CLI binary (overrides auto-detection) |
+| `AGENTRUN_DEFAULT_MODEL` | Override default LLM model for standard queries |
+| `AGENTRUN_COMPLEX_MODEL` | Override LLM model for complex/agentic queries |
 
 **Storage:**
 
@@ -5430,6 +5441,7 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *Eval* | Manifest kind (`kind: Eval`) that declares test cases for skill routing validation. Supports two phases: *trigger eval* (instant keyword matching) and *execution eval* (live infrastructure). Six expectation types: `contains`, `not_contains`, `tool_called`, `tool_not_called`, `matches_regex`, `llm_judge`. |
 | DynamoDB | AWS NoSQL database service used by AgentRun for conversation sessions, usage tracking, and API key registration. |
 | *Factory* | Design pattern that centralizes object creation (tools, handlers), ensuring different types are instantiated by the correct factory. |
+| *GChatChannelAdapter* | Channel adapter for Google Chat. Parses Workspace Add-on payloads, converts Markdown responses to HTML card format, and resolves user identity via email with cross-channel lookup fallback. Package: `@agentrun-ai/channel-gchat`. |
 | *guardrail* | Automatic protection mechanism that restricts the AI agent's behavior, such as blocking dangerous tools or session cost limits. |
 | *hook* | Function that intercepts the lifecycle of a tool call. AgentRun uses `preToolUse` (before execution, for security) and `postToolUse` (after execution, for auditing). |
 | IDP | *Internal Developer Platform*. Internal platform that provides self-service tools and services for development teams. |
