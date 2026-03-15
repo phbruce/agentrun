@@ -11,3 +11,4 @@ coverage/
 .workplan.md
 .gchat-infra.md
 .env
+bridge/agentrun-bridge
