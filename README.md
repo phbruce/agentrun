@@ -29,6 +29,7 @@ Channel Input → Identity Resolution → RBAC Gating → Routing
 | [`@agentrun-ai/core`](packages/core) | Orchestrator, agent runner, catalog, RBAC, platform registry, RAG |
 | [`@agentrun-ai/aws`](packages/aws) | Bedrock LLM/embeddings, DynamoDB, S3, SQS, STS, Secrets Manager |
 | [`@agentrun-ai/channel-slack`](packages/channel-slack) | Slack adapter, Block Kit formatting, identity resolution |
+| [`@agentrun-ai/channel-gchat`](packages/channel-gchat) | Google Chat adapter, Cards V2 formatting, Workspace Add-on support |
 | [`@agentrun-ai/channel-mcp`](packages/channel-mcp) | MCP JSON-RPC server for Claude Code and other MCP clients |
 | [`@agentrun-ai/tools-aws`](packages/tools-aws) | AWS infrastructure tools (EKS, RDS, Lambda, CloudWatch, SQS) |
 | [`@agentrun-ai/tools-github`](packages/tools-github) | GitHub tools (PRs, commits, reviews) |
@@ -42,6 +43,7 @@ Channel Input → Identity Resolution → RBAC Gating → Routing
     ↑
 @agentrun-ai/aws               @aws-sdk/*, @agentrun-ai/core
 @agentrun-ai/channel-slack     @slack/web-api, @agentrun-ai/core
+@agentrun-ai/channel-gchat     @agentrun-ai/core
 @agentrun-ai/channel-mcp       @agentrun-ai/core
 @agentrun-ai/tools-aws         @aws-sdk/*, @agentrun-ai/core
 @agentrun-ai/tools-github      @octokit/rest, @agentrun-ai/core
@@ -82,6 +84,7 @@ await processRequest(adapter, {
 |---------|-------------|
 | [`aws-lambda`](examples/aws-lambda) | Production architecture: API Gateway + Lambda + SQS + DynamoDB |
 | [`gcp-cloud-functions`](examples/gcp-cloud-functions) | Google Cloud Functions + Pub/Sub |
+| [`gchat-standalone`](examples/gchat-standalone) | Google Chat bot via Fastify + HTTP endpoint |
 | [`standalone`](examples/standalone) | Single Fastify server, no external dependencies |
 | [`docker`](examples/docker) | Docker Compose with PostgreSQL (pgvector) + Redis |
 

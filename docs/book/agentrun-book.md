@@ -3586,6 +3586,13 @@ Phase 9 — Google Chat Integration (Mar 15, 2026)
            Markdown-to-HTML card formatter
            Cross-channel user lookup (email fallback)
            Core: CLAUDE_CODE_EXECUTABLE, model env var overrides
+  Mar 15   v0.2.1  Cards V2: 'function' not 'actionMethodName' for button actions
+           v0.2.2  Replace action buttons with text list (no registered handlers)
+           v0.2.3  Remove placeholder delete (GChat has no delete-own-message)
+           v0.2.4  Ack with "Analisando..." then updateMessage with response
+           v0.2.5  Convert markdown to HTML before updateMessage (plain text only)
+           v0.2.6  Ack as text, response as card (cards support HTML)
+           v0.2.7  displayName fallback from ctx.meta when user not in registry
 ```
 
 ### 4.11.2 Architectural Decision Records
@@ -3646,6 +3653,18 @@ Mar 7  — npm @agentrun-ai/* packages
 
 Each transition was driven by a concrete problem: inline code couldn't be shared across repos; vendor tgz required manual S3 uploads; the original npm scope didn't reflect the project name.
 
+#### ADR-7: Google Chat Message Lifecycle (Mar 15, 7 patches)
+
+The Google Chat adapter went through 7 rapid iterations (v0.2.1-v0.2.7) to converge on a viable message lifecycle. Three Google Chat API constraints drove the design:
+
+1. **Cards V2 `function` vs `actionMethodName`**: The legacy field `actionMethodName` is silently ignored. Action buttons require `function` — but even then, the function must be registered as a Workspace Add-on action handler. Without server-side registration, button clicks produce errors.
+2. **`updateMessage` supports plain text only**: The PATCH endpoint with `updateMask=text` accepts only the `text` field. HTML markup and Cards V2 payloads are rejected or silently stripped.
+3. **No delete-own-message for bots**: Unlike Slack, Google Chat bots cannot delete messages they sent via the REST API in all space types, making placeholder-then-delete patterns unreliable.
+
+**Final design**: `onProcessingStart` sends a plain text "Analisando..." ack. On completion, the ack is updated to a checkmark character via `updateMessage` (text-only). The full response is delivered as a separate Cards V2 message via `createCardMessage` (which supports HTML in `textParagraph` widgets). Skills are listed as text, not action buttons.
+
+**Lesson**: Chat platform APIs vary in subtle ways that are not documented. Assume nothing transfers from one platform to another — test each interaction pattern independently.
+
 ### 4.11.3 Features Tried and Abandoned
 
 | Feature | Added | Removed | Reason |
@@ -3653,6 +3672,9 @@ Each transition was driven by a concrete problem: inline code couldn't be shared
 | Rich text blocks for Slack | Feb 22 | Feb 22 | Multiple format cycles (mrkdwn → rich_text → pure rich_text → mrkdwn); mrkdwn was more reliable across Slack clients |
 | Bot avatar in message footer | Feb 21 | Feb 21 | Tried robot emoji, custom gentleman avatar, Twemoji CDN; all added noise without value. Removed same day |
 | API key authentication | Feb 24 | Feb 25 | API keys don't carry identity context; replaced by GitHub token identity for RBAC |
+| GChat action buttons for skills | Mar 15 | Mar 15 | Cards V2 buttons require registered action handlers; replaced with text list (v0.2.2) |
+| GChat placeholder delete pattern | Mar 15 | Mar 15 | Bots cannot reliably delete own messages in GChat; replaced with ack-then-update (v0.2.3) |
+| GChat HTML in updateMessage | Mar 15 | Mar 15 | updateMessage only accepts plain text; moved rich content to separate card message (v0.2.6) |
 | Per-lambda PostgreSQL users | Feb 8 | Mar 3 | 100 users created, all deleted. Lock contention under IAM auth (ADR-3) |
 | stdio Go bridge for MCP | Feb 25 | Mar 9 | Replaced by direct HTTP; Streamable HTTP eliminated the need for stdin/stdout proxy |
 | Old JSON eval files | Feb 23 | Mar 7 | Replaced by YAML eval manifests in the eval framework |
@@ -5441,7 +5463,7 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *Eval* | Manifest kind (`kind: Eval`) that declares test cases for skill routing validation. Supports two phases: *trigger eval* (instant keyword matching) and *execution eval* (live infrastructure). Six expectation types: `contains`, `not_contains`, `tool_called`, `tool_not_called`, `matches_regex`, `llm_judge`. |
 | DynamoDB | AWS NoSQL database service used by AgentRun for conversation sessions, usage tracking, and API key registration. |
 | *Factory* | Design pattern that centralizes object creation (tools, handlers), ensuring different types are instantiated by the correct factory. |
-| *GChatChannelAdapter* | Channel adapter for Google Chat. Parses Workspace Add-on payloads, converts Markdown responses to HTML card format, and resolves user identity via email with cross-channel lookup fallback. Package: `@agentrun-ai/channel-gchat`. |
+| *GChatChannelAdapter* | Channel adapter for Google Chat. Message lifecycle: sends "Analisando..." text ack on start, updates ack to "checkmark" on completion, then posts a Cards V2 card with the full response (HTML via `markdownToHtml`). Skills are rendered as a text list (Cards V2 action buttons require a registered handler). User display name falls back to `ctx.meta.displayName` when the user is not in the identity registry. Package: `@agentrun-ai/channel-gchat`. |
 | *guardrail* | Automatic protection mechanism that restricts the AI agent's behavior, such as blocking dangerous tools or session cost limits. |
 | *hook* | Function that intercepts the lifecycle of a tool call. AgentRun uses `preToolUse` (before execution, for security) and `postToolUse` (after execution, for auditing). |
 | IDP | *Internal Developer Platform*. Internal platform that provides self-service tools and services for development teams. |
