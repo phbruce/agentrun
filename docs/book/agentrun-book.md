@@ -184,7 +184,7 @@ The runtime is the immutable core of the platform. It includes:
 - *Process Handler*: consumes the queue, loads manifests, executes tools, and returns responses.
 - *MCP Server*: exposes tools as JSON-RPC endpoints for MCP clients (Claude Code, IDEs).
 - *Catalog Loader*: discovers and validates YAML manifests at initialization time.
-- *Session Store*: persists conversation history per thread (session store with configurable TTL; AWS implementation: DynamoDB).
+- *Session Store*: persists conversation history per thread via the `SessionStore` interface (configurable TTL; reference implementation: DynamoDB via `@agentrun-ai/aws`).
 
 Changes to the runtime require a full deploy (CI/CD with tests, PR approval, apply via GitOps).
 
@@ -301,7 +301,7 @@ Characteristics:
 
 ### 1.4.2 Flow 2: Manifest Sync (Consumer Packs)
 
-Consumer pack manifests are synchronized via the manifest store (currently S3), without the need for redeploy:
+Consumer pack manifests are synchronized via the `ManifestStore` interface (reference implementation: S3 via `@agentrun-ai/aws`; any storage backend can be used), without the need for redeploy:
 
 ```text
 Developer -> PR (manifest YAML) -> Review -> Merge -> CI Sync -> Manifest Store -> Handler Cold Start
@@ -560,7 +560,7 @@ fields userId, toolName | filter hook = "postToolUse" and statusCode >= 400
 
 ### 1.7.4 Usage Tracking
 
-In addition to hooks, AgentRun persists usage metrics in a dedicated usage store (currently DynamoDB):
+In addition to hooks, AgentRun persists usage metrics via the `UsageStore` interface (reference implementation: DynamoDB via `@agentrun-ai/aws`):
 
 | Field | Description |
 |-------|-------------|

@@ -124,7 +124,7 @@ Tools are defined as TypeScript handlers + YAML manifests:
 3. Create a YAML manifest describing the tool's metadata
 4. Register the tool factory in your `setup.ts`
 
-See existing tools in `packages/tools-aws/src/` for reference.
+See existing tools in `packages/tools-github/src/` and `packages/tools-jira/src/` for reference.
 
 ## Adding a New Channel
 
@@ -132,6 +132,33 @@ See existing tools in `packages/tools-aws/src/` for reference.
 2. Implement the `ChannelAdapter` interface from `@agentrun-ai/core`
 3. Add the package to `pnpm-workspace.yaml`
 4. Update `commitlint.config.mjs` to include the new scope
+
+## Adding a New Provider Package
+
+AgentRun's core is cloud-agnostic. `@agentrun-ai/aws` is the reference implementation. To add support for another cloud (e.g., `@agentrun-ai/gcp`):
+
+1. Create a new package under `packages/` (e.g., `packages/gcp/`)
+2. Depend on `@agentrun-ai/core` for the provider interfaces
+3. Implement the required interfaces from `@agentrun-ai/core`:
+
+| Interface | Purpose | Required |
+|-----------|---------|----------|
+| `LlmProvider` | LLM completions | Yes |
+| `CredentialProvider` | Per-role scoped credentials | Yes |
+| `SessionStore` | Conversation history | Yes |
+| `UsageStore` | Token/invocation tracking | Yes |
+| `ManifestStore` | Pack manifest storage | Yes |
+| `QueueProvider` | Async message dispatch | Yes |
+| `BootstrapSecretProvider` | Secret retrieval at startup | Yes |
+| `EmbeddingProvider` | Text embeddings for RAG | Optional |
+| `VectorStore` | Vector similarity search | Optional |
+| `KnowledgeBaseProvider` | Managed RAG retrieval | Optional |
+
+4. Export a `registerXxxProviders(config: PlatformConfig): void` function that instantiates all providers and calls `PlatformRegistry.instance().register()`
+5. Add the package to `pnpm-workspace.yaml`
+6. Update `commitlint.config.mjs` to include the new scope
+
+See `packages/aws/src/index.ts` for the registration pattern used by the reference implementation.
 
 ## Reporting Issues
 
