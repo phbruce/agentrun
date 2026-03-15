@@ -10,9 +10,37 @@ AgentRun is a self-hosted runtime that turns declarative YAML manifests into a f
 - **Multi-channel** — Same agent brain serves Slack, MCP (Model Context Protocol), and future channels
 - **RBAC-gated** — Identity resolution, role mapping, and per-role use-case access with budget controls
 - **Dual execution** — Skills run as `direct` (deterministic, fast) or `agent` (LLM reasoning loop)
-- **Pack system** — Extension bundles loaded from S3, grouping tools + workflows + use-cases + skills
+- **Pack system** — Extension bundles loaded from any ManifestStore (S3, GCS, local filesystem), grouping tools + workflows + use-cases + skills
 - **Session memory** — Per-thread conversation persistence with configurable TTL
 - **RAG** — Built-in vector search over ingested documents (pgvector)
+
+### Cloud-agnostic by design
+
+Every infrastructure concern in AgentRun is behind a TypeScript interface defined in `@agentrun-ai/core`. The core package has **zero cloud dependencies** — all cloud-specific behavior is injected at startup via `PlatformRegistry`.
+
+`@agentrun-ai/aws` is the reference implementation. To run on another cloud, implement the same interfaces and register your providers:
+
+```typescript
+import { PlatformRegistry, type PlatformProviders } from "@agentrun-ai/core";
+
+// Example: register custom providers (Vertex AI, Firestore, GCS, etc.)
+const providers: PlatformProviders = {
+    llm:          new VertexAiProvider(config),       // implements LlmProvider
+    credentials:  new GcpCredentialProvider(config),  // implements CredentialProvider
+    sessions:     new FirestoreSessionStore(config),  // implements SessionStore
+    usage:        new FirestoreUsageStore(config),    // implements UsageStore
+    manifests:    new GcsManifestStore(config),       // implements ManifestStore
+    queue:        new PubSubQueueProvider(config),    // implements QueueProvider
+    secrets:      new GcpSecretManager(config),       // implements BootstrapSecretProvider
+    // Optional:
+    embeddings:   new VertexEmbeddingProvider(config), // implements EmbeddingProvider
+    vectorStore:  new PgVectorStore(config),           // implements VectorStore
+};
+
+PlatformRegistry.instance().register(providers);
+```
+
+> No `@agentrun-ai/gcp` package exists yet — community contributions welcome.
 
 ## Architecture
 
@@ -21,6 +49,23 @@ Channel Input → Identity Resolution → RBAC Gating → Routing
   → Execution (direct tool calls OR agentic LLM loop)
   → Session Persistence → Channel Delivery → Usage Tracking
 ```
+
+### Provider Interfaces
+
+Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. The `@agentrun-ai/aws` package provides the reference implementation; alternatives can be built by implementing the same interfaces.
+
+| Interface | Purpose | AWS impl (`@agentrun-ai/aws`) | Alternatives (implement the interface) |
+|-----------|---------|-------------------------------|----------------------------------------|
+| `LlmProvider` | LLM completions and summarization | Bedrock (`BedrockLlmProvider`) | Vertex AI, OpenAI, Ollama |
+| `CredentialProvider` | Per-role scoped credentials | STS (`StsCredentialProvider`) | GCP IAM, Azure AD, Vault |
+| `SessionStore` | Conversation history persistence | DynamoDB (`DynamoSessionStore`) | Firestore, PostgreSQL, Redis |
+| `UsageStore` | Token and invocation tracking | DynamoDB (`DynamoUsageStore`) | Firestore, PostgreSQL, Redis |
+| `ManifestStore` | Pack manifest storage and discovery | S3 (`S3ManifestStore`) | GCS, Azure Blob, local filesystem |
+| `QueueProvider` | Async message dispatch | SQS (`SqsQueueProvider`) | Pub/Sub, RabbitMQ, Redis Streams |
+| `BootstrapSecretProvider` | Secret retrieval at startup | Secrets Manager (`SmSecretProvider`) | GCP Secret Manager, Vault, env vars |
+| `EmbeddingProvider` | Text embeddings for RAG | Bedrock Titan (`BedrockEmbeddingProvider`) | Vertex AI, OpenAI, local models |
+| `VectorStore` | Vector similarity search | pgvector (`PgVectorStore`) | Pinecone, Qdrant, Weaviate |
+| `KnowledgeBaseProvider` | Managed RAG retrieval | Bedrock KB (`BedrockKbProvider`) | Vertex AI Search, custom |
 
 ## Packages
 
@@ -53,22 +98,21 @@ Channel Input → Identity Resolution → RBAC Gating → Routing
 
 ## Quick Start
 
+### Option A: AWS providers
+
 ```bash
 npm install @agentrun-ai/core @agentrun-ai/aws @agentrun-ai/channel-slack
 ```
 
 ```typescript
-import { bootstrapPlatform, processRequest } from "@agentrun-ai/core";
+import { setProviderRegistrar, bootstrapPlatform, processRequest } from "@agentrun-ai/core";
 import { registerAwsProviders } from "@agentrun-ai/aws";
 import { SlackChannelAdapter } from "@agentrun-ai/channel-slack";
 
-// Register AWS providers (Bedrock, DynamoDB, S3, etc.)
-registerAwsProviders();
-
-// Bootstrap platform from config
+// Use the AWS reference implementation (Bedrock, DynamoDB, S3, SQS, STS)
+setProviderRegistrar(registerAwsProviders);
 await bootstrapPlatform();
 
-// Process a request
 const adapter = new SlackChannelAdapter();
 await processRequest(adapter, {
     userId: "U12345",
@@ -78,11 +122,39 @@ await processRequest(adapter, {
 });
 ```
 
+### Option B: Custom providers (any cloud)
+
+```bash
+npm install @agentrun-ai/core @agentrun-ai/channel-slack
+```
+
+```typescript
+import { PlatformRegistry, bootstrapPlatform, processRequest } from "@agentrun-ai/core";
+import { SlackChannelAdapter } from "@agentrun-ai/channel-slack";
+// Import your own provider implementations
+import { MyLlmProvider, MySessionStore, /* ... */ } from "./providers.js";
+
+PlatformRegistry.instance().register({
+    llm:         new MyLlmProvider(),
+    sessions:    new MySessionStore(),
+    credentials: new MyCredentialProvider(),
+    usage:       new MyUsageStore(),
+    manifests:   new MyManifestStore(),
+    queue:       new MyQueueProvider(),
+    secrets:     new MySecretProvider(),
+});
+
+await bootstrapPlatform();
+
+const adapter = new SlackChannelAdapter();
+await processRequest(adapter, { /* ... */ });
+```
+
 ## Deployment Examples
 
 | Example | Description |
 |---------|-------------|
-| [`aws-lambda`](examples/aws-lambda) | Production architecture: API Gateway + Lambda + SQS + DynamoDB |
+| [`aws-lambda`](examples/aws-lambda) | AWS serverless: API Gateway + Lambda + SQS + DynamoDB |
 | [`gcp-cloud-functions`](examples/gcp-cloud-functions) | Google Cloud Functions + Pub/Sub |
 | [`gchat-standalone`](examples/gchat-standalone) | Google Chat bot via Fastify + HTTP endpoint |
 | [`slack-standalone`](examples/slack-standalone) | Single Fastify server, no external dependencies |
@@ -98,20 +170,20 @@ await processRequest(adapter, {
 ## Manifest Example
 
 ```yaml
-# tools/describe-cluster.yaml
+# tools/list-open-prs.yaml
 apiVersion: agentrun/v1
 kind: Tool
 metadata:
-  name: describe-eks-cluster
+  name: list-open-prs
 spec:
-  mcpTool: describe_eks_cluster
-  description: Describe an EKS cluster
-  category: infrastructure
+  mcpTool: list_open_prs
+  description: List open pull requests for a repository
+  category: ci-cd
   readOnly: true
   parameters:
-    cluster_name:
+    repo:
       type: string
-      description: EKS cluster name
+      description: Repository name (owner/repo)
       required: true
 ```
 
