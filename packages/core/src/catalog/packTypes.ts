@@ -133,6 +133,7 @@ export const RemoteUseCaseSchema = z.object({
         keywords: z.array(z.string().min(1)).min(1),
         workflows: z.array(z.string().min(1)).min(1),
         template: z.string().min(1),
+        scope: z.string().optional(),
     }),
 });
 

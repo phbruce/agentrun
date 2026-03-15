@@ -71,6 +71,7 @@ export function loadManifestsFromRaw(
             keywords: doc.spec.keywords,
             workflows: doc.spec.workflows,
             template: doc.spec.template,
+            ...(doc.spec.scope ? { scope: doc.spec.scope } : {}),
         };
         if (useCases.has(uc.name)) {
             throw new Error(`Duplicate use case name: ${uc.name} (file: ${file})`);
