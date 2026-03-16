@@ -10,8 +10,9 @@ import {
     loadCatalogForPacks,
     setCatalog,
 } from "@agentrun-ai/core";
-import type { ChannelContext } from "@agentrun-ai/core";
+import type { ChannelAdapter, ChannelContext } from "@agentrun-ai/core";
 import { SlackChannelAdapter } from "@agentrun-ai/channel-slack";
+import { GChatChannelAdapter } from "@agentrun-ai/channel-gchat";
 import "../setup.js";
 
 // ── Cold-start initialization ───────────────────────────────────────────────
@@ -35,10 +36,12 @@ const _bootstrap = bootstrapPlatform()
     });
 
 const slackAdapter = new SlackChannelAdapter();
+const gchatAdapter = new GChatChannelAdapter();
 
 // ── Pub/Sub message shape ───────────────────────────────────────────────────
 
-interface PubSubData {
+interface SlackPubSubData {
+    source?: "slack";
     userId: string;
     channelId: string;
     text: string;
@@ -46,6 +49,19 @@ interface PubSubData {
     threadTs?: string;
     messageTs?: string;
 }
+
+interface GChatPubSubData {
+    source: "gchat";
+    userId: string;
+    text: string;
+    meta: {
+        spaceId: string;
+        threadName: string;
+        displayName: string;
+    };
+}
+
+type PubSubData = SlackPubSubData | GChatPubSubData;
 
 // ── Cloud Function entry point ──────────────────────────────────────────────
 
@@ -62,30 +78,63 @@ export async function processHandler(event: CloudEvent<{ message: { data: string
         return;
     }
 
-    const { userId, channelId, text, responseUrl, threadTs, messageTs } = body;
-    const isDm = channelId?.startsWith("D") ?? false;
+    const requestId = event.id ?? crypto.randomUUID();
+    const source = body.source ?? "slack";
 
-    console.info(`Processing query: user=${userId} channel=${channelId} isDm=${isDm}`);
+    let ctx: ChannelContext;
+    let adapter: ChannelAdapter;
 
-    const ctx: ChannelContext = {
-        requestId: event.id ?? crypto.randomUUID(),
-        sessionId: threadTs
-            ? `slack:${channelId}#${threadTs}`
-            : `slack:${channelId}#${messageTs}`,
-        userId,
-        source: "slack",
-        query: text,
-        isPrivate: isDm,
-        responseUrl,
-        meta: {
-            channelId: channelId ?? "",
-            threadTs: threadTs ?? "",
-            messageTs: messageTs ?? "",
-        },
-    };
+    if (source === "gchat") {
+        const gchatBody = body as GChatPubSubData;
+        const { userId, text, meta } = gchatBody;
+        const { spaceId, threadName, displayName } = meta ?? {};
+
+        console.info(`Processing GChat query: user=${userId} space=${spaceId}`);
+
+        ctx = {
+            requestId,
+            sessionId: threadName
+                ? `gchat:${spaceId}#${threadName}`
+                : `gchat:${spaceId}#${requestId}`,
+            userId,
+            source: "gchat",
+            query: text,
+            isPrivate: false,
+            meta: {
+                spaceId: spaceId ?? "",
+                threadName: threadName ?? "",
+                displayName: displayName ?? "",
+            },
+        };
+        adapter = gchatAdapter;
+    } else {
+        const slackBody = body as SlackPubSubData;
+        const { userId, channelId, text, responseUrl, threadTs, messageTs } = slackBody;
+        const isDm = channelId?.startsWith("D") ?? false;
+
+        console.info(`Processing Slack query: user=${userId} channel=${channelId} isDm=${isDm}`);
+
+        ctx = {
+            requestId,
+            sessionId: threadTs
+                ? `slack:${channelId}#${threadTs}`
+                : `slack:${channelId}#${messageTs}`,
+            userId,
+            source: "slack",
+            query: text,
+            isPrivate: isDm,
+            responseUrl,
+            meta: {
+                channelId: channelId ?? "",
+                threadTs: threadTs ?? "",
+                messageTs: messageTs ?? "",
+            },
+        };
+        adapter = slackAdapter;
+    }
 
     try {
-        await processRequest({ ctx, adapter: slackAdapter });
+        await processRequest({ ctx, adapter });
     } catch (error: any) {
         console.error(`Process failed for event ${event.id}:`, error.message);
         // Throwing will cause Pub/Sub to retry (up to the subscription's max retry)

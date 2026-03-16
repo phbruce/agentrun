@@ -13,6 +13,7 @@
     "@agentrun-ai/core": "^0.2.0",
     "@agentrun-ai/gcp": "^0.2.0",
     "@agentrun-ai/channel-slack": "^0.2.0",
+    "@agentrun-ai/channel-gchat": "^0.2.0",
     "@agentrun-ai/tools-aws": "^0.2.0",
     "@agentrun-ai/tools-github": "^0.2.0",
     "@agentrun-ai/tools-jira": "^0.2.0",
