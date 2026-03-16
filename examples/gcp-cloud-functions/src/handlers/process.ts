@@ -68,13 +68,22 @@ type PubSubData = SlackPubSubData | GChatPubSubData;
 export async function processHandler(event: CloudEvent<{ message: { data: string } }>): Promise<void> {
     await _bootstrap;
 
-    // Pub/Sub messages are base64-encoded
-    const raw = Buffer.from(event.data?.message?.data ?? "", "base64").toString("utf-8");
+    // Pub/Sub messages are base64-encoded — handle both CloudEvent formats
+    console.log("Event keys:", Object.keys(event));
+    console.log("Event.data type:", typeof event.data, event.data ? Object.keys(event.data) : "null");
+
+    const messageData = (event.data as any)?.message?.data   // CloudEvents v1
+        ?? (event as any).message?.data                       // Legacy
+        ?? (event.data as any)?.data                          // Direct
+        ?? "";
+
+    const raw = Buffer.from(messageData, "base64").toString("utf-8");
     let body: PubSubData;
     try {
         body = JSON.parse(raw);
     } catch {
-        console.error("Failed to parse Pub/Sub message:", raw);
+        console.error("Failed to parse Pub/Sub message. Raw:", raw.slice(0, 200));
+        console.error("Full event:", JSON.stringify(event).slice(0, 500));
         return;
     }
 
