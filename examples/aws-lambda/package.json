@@ -1,0 +1,34 @@
+{
+  "name": "agentrun-example-aws-lambda",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@agentrun-ai/core": "^0.2.0",
+    "@agentrun-ai/aws": "^0.2.0",
+    "@agentrun-ai/channel-slack": "^0.2.0",
+    "@agentrun-ai/tools-aws": "^0.2.0",
+    "@agentrun-ai/tools-github": "^0.2.0",
+    "@agentrun-ai/tools-jira": "^0.2.0",
+    "@agentrun-ai/channel-gchat": "^0.2.0",
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/client-sqs": "^3.700.0",
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

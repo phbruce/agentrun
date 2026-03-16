@@ -1,0 +1,25 @@
+# AgentRun Code Owners
+# These users will be automatically requested for review on PRs.
+
+# Default owner for everything
+* @phbruce
+
+# Core packages
+packages/core/ @phbruce
+packages/aws/ @phbruce
+
+# Channel adapters
+packages/channel-slack/ @phbruce
+packages/channel-mcp/ @phbruce
+
+# Tool packages
+packages/tools-aws/ @phbruce
+packages/tools-github/ @phbruce
+packages/tools-jira/ @phbruce
+
+# CLI
+packages/cli/ @phbruce
+
+# CI/CD and infrastructure
+.github/ @phbruce
+commitlint.config.mjs @phbruce
