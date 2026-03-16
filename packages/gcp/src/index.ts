@@ -10,6 +10,7 @@ import { GcsManifestStore } from "./gcsManifests.js";
 import { GcpSecretProvider } from "./secretManager.js";
 import { PubSubQueueProvider } from "./pubsubQueue.js";
 import { GcpIamCredentialProvider } from "./iamCredentials.js";
+import { FirestoreVectorStore } from "./firestoreVector.js";
 import { CloudSqlVectorStore } from "./cloudSqlVector.js";
 import { VertexAiKBProvider } from "./vertexKB.js";
 
@@ -47,11 +48,17 @@ export function registerGcpProviders(config: PlatformConfig): void {
         )
         : undefined;
 
+    const vectorStoreType = (vectorStoreConfig?.config.type as string) ?? "firestore";
     const vectorStoreProvider = vectorStoreConfig
-        ? new CloudSqlVectorStore(
-            vectorStoreConfig.config.connectionString as string,
-            (vectorStoreConfig.config.schema as string) ?? "agentrun",
-        )
+        ? vectorStoreType === "cloudsql"
+            ? new CloudSqlVectorStore(
+                vectorStoreConfig.config.connectionString as string,
+                (vectorStoreConfig.config.schema as string) ?? "agentrun",
+            )
+            : new FirestoreVectorStore(
+                (vectorStoreConfig.config.collectionName as string) ?? "knowledge-chunks",
+                (vectorStoreConfig.config.dimensions as number) ?? 768,
+            )
         : undefined;
 
     // Knowledge Base provider (optional — managed RAG via Vertex AI Agent Builder)
@@ -91,5 +98,6 @@ export { GcsManifestStore } from "./gcsManifests.js";
 export { GcpSecretProvider } from "./secretManager.js";
 export { PubSubQueueProvider } from "./pubsubQueue.js";
 export { GcpIamCredentialProvider } from "./iamCredentials.js";
+export { FirestoreVectorStore } from "./firestoreVector.js";
 export { CloudSqlVectorStore } from "./cloudSqlVector.js";
 export { VertexAiKBProvider } from "./vertexKB.js";
