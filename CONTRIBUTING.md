@@ -16,7 +16,7 @@ Thank you for your interest in contributing to AgentRun. This guide will help yo
 git clone https://github.com/phbruce/agentrun.git
 cd agentrun
 pnpm install      # installs deps + sets up husky hooks automatically
-pnpm run build    # builds all 11 packages via Turbo
+pnpm run build    # builds all 12 packages via Turbo
 pnpm run typecheck # type-checks all packages
 ```
 
@@ -32,6 +32,7 @@ agentrun/
 │   ├── channel-gchat/  # @agentrun-ai/channel-gchat — Google Chat adapter
 │   ├── channel-mcp/    # @agentrun-ai/channel-mcp — MCP JSON-RPC server
 │   ├── tools-aws/      # @agentrun-ai/tools-aws — AWS infrastructure tools
+│   ├── tools-gcp/      # @agentrun-ai/tools-gcp — GCP infrastructure tools
 │   ├── tools-github/   # @agentrun-ai/tools-github — GitHub tools
 │   ├── tools-jira/     # @agentrun-ai/tools-jira — Jira tools
 │   └── cli/            # @agentrun-ai/cli — CLI (validate, sync, ingest)
@@ -86,7 +87,7 @@ type(scope): subject
 
 Use the package name without the `@agentrun-ai/` prefix:
 
-`core`, `aws`, `gcp`, `channel-slack`, `channel-gchat`, `channel-mcp`, `tools-aws`, `tools-github`, `tools-jira`, `cli`, `deps`, `release`
+`core`, `aws`, `gcp`, `channel-slack`, `channel-gchat`, `channel-mcp`, `tools-aws`, `tools-gcp`, `tools-github`, `tools-jira`, `cli`, `deps`, `release`
 
 ### Examples
 

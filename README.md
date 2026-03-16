@@ -64,6 +64,7 @@ Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. T
 | [`@agentrun-ai/channel-gchat`](packages/channel-gchat) | Google Chat adapter, Cards V2 formatting, Workspace Add-on support |
 | [`@agentrun-ai/channel-mcp`](packages/channel-mcp) | MCP JSON-RPC server for Claude Code and other MCP clients |
 | [`@agentrun-ai/tools-aws`](packages/tools-aws) | AWS infrastructure tools (EKS, RDS, Lambda, CloudWatch, SQS) |
+| [`@agentrun-ai/tools-gcp`](packages/tools-gcp) | GCP infrastructure tools (GKE, Cloud SQL, Cloud Functions, Cloud Logging, Pub/Sub) |
 | [`@agentrun-ai/tools-github`](packages/tools-github) | GitHub tools (PRs, commits, reviews) |
 | [`@agentrun-ai/tools-jira`](packages/tools-jira) | Jira tools (issues, comments, transitions) |
 | [`@agentrun-ai/gcp`](packages/gcp) | GCP providers: Vertex AI, Firestore, Cloud Storage, Pub/Sub, Secret Manager |
@@ -80,6 +81,7 @@ Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. T
 @agentrun-ai/channel-gchat     @agentrun-ai/core
 @agentrun-ai/channel-mcp       @agentrun-ai/core
 @agentrun-ai/tools-aws         @aws-sdk/*, @agentrun-ai/core
+@agentrun-ai/tools-gcp         @google-cloud/*, @agentrun-ai/core
 @agentrun-ai/tools-github      @octokit/rest, @agentrun-ai/core
 @agentrun-ai/tools-jira        @agentrun-ai/core
 @agentrun-ai/cli               @agentrun-ai/core, commander

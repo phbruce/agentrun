@@ -1,0 +1,51 @@
+{
+  "name": "@agentrun-ai/tools-gcp",
+  "version": "0.2.0",
+  "description": "GCP infrastructure tools: GKE, Cloud SQL, Cloud Functions, Cloud Logging, Pub/Sub monitoring",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "peerDependencies": {
+    "@agentrun-ai/core": "workspace:*"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "@google-cloud/container": "^5.0.0",
+    "@google-cloud/functions": "^3.0.0",
+    "@google-cloud/logging": "^11.0.0",
+    "@google-cloud/pubsub": "^4.0.0",
+    "@google-cloud/sql": "^0.24.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phbruce/agentrun.git",
+    "directory": "packages/tools-gcp"
+  },
+  "homepage": "https://github.com/phbruce/agentrun"
+}
