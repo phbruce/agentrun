@@ -184,7 +184,7 @@ The runtime is the immutable core of the platform. It includes:
 - *Process Handler*: consumes the queue, loads manifests, executes tools, and returns responses.
 - *MCP Server*: exposes tools as JSON-RPC endpoints for MCP clients (Claude Code, IDEs).
 - *Catalog Loader*: discovers and validates YAML manifests at initialization time.
-- *Session Store*: persists conversation history per thread via the `SessionStore` interface (configurable TTL; reference implementation: DynamoDB via `@agentrun-ai/aws`).
+- *Session Store*: persists conversation history per thread via the `SessionStore` interface (configurable TTL; implementations: DynamoDB via `@agentrun-ai/aws`, Firestore via `@agentrun-ai/gcp`).
 
 Changes to the runtime require a full deploy (CI/CD with tests, PR approval, apply via GitOps).
 
@@ -301,7 +301,7 @@ Characteristics:
 
 ### 1.4.2 Flow 2: Manifest Sync (Consumer Packs)
 
-Consumer pack manifests are synchronized via the `ManifestStore` interface (reference implementation: S3 via `@agentrun-ai/aws`; any storage backend can be used), without the need for redeploy:
+Consumer pack manifests are synchronized via the `ManifestStore` interface (implementations: S3 via `@agentrun-ai/aws`, Cloud Storage via `@agentrun-ai/gcp`; any storage backend can be used), without the need for redeploy:
 
 ```text
 Developer -> PR (manifest YAML) -> Review -> Merge -> CI Sync -> Manifest Store -> Handler Cold Start
@@ -410,7 +410,7 @@ spec:
 
 ### 1.5.3 Identity Resolution Chain
 
-When a user interacts with AgentRun, the identity goes through a resolution chain. The steps below use the reference implementation (Slack + GitHub), but the `IdentityProvider` interface supports any identity source (Okta, Google Workspace, LDAP) by implementing the same `resolve()` contract:
+When a user interacts with AgentRun, the identity goes through a resolution chain. The steps below use a typical implementation (Slack + GitHub), but the `IdentityProvider` interface supports any identity source (Okta, Google Workspace, LDAP) by implementing the same `resolve()` contract:
 
 | Step | Description |
 |------|-------------|
@@ -560,7 +560,7 @@ fields userId, toolName | filter hook = "postToolUse" and statusCode >= 400
 
 ### 1.7.4 Usage Tracking
 
-In addition to hooks, AgentRun persists usage metrics via the `UsageStore` interface (reference implementation: DynamoDB via `@agentrun-ai/aws`):
+In addition to hooks, AgentRun persists usage metrics via the `UsageStore` interface (implementations: DynamoDB via `@agentrun-ai/aws`, Firestore via `@agentrun-ai/gcp`):
 
 | Field | Description |
 |-------|-------------|
@@ -947,7 +947,7 @@ With threats mapped, the first control to implement is authentication: confirmin
 
 ### 2.2.1 GitHub OAuth Device Flow (Bridge / MCP)
 
-The reference implementation uses *GitHub OAuth Device Flow* (RFC 8628), ideal for CLIs where the user may not have a browser on the same machine. Alternative identity providers (Okta, Google Workspace, LDAP) can replace this flow by implementing the `IdentityProvider` interface.
+The default implementation uses *GitHub OAuth Device Flow* (RFC 8628), ideal for CLIs where the user may not have a browser on the same machine. Alternative identity providers (Okta, Google Workspace, LDAP) can replace this flow by implementing the `IdentityProvider` interface.
 
 Figure 2.2 -- OAuth Device Flow authentication flow.
 
@@ -1025,7 +1025,7 @@ minutes (*replay protection*).
 
 ### 2.2.4 Identity Resolution in the MCP Server
 
-In the reference implementation, the MCP server receives `Authorization: Bearer <token>`, validates against GitHub `/user`, and maps the login to a role via the user registry. Alternative identity providers follow the same pattern with their own token validation endpoint:
+In the default implementation, the MCP server receives `Authorization: Bearer <token>`, validates against GitHub `/user`, and maps the login to a role via the user registry. Alternative identity providers follow the same pattern with their own token validation endpoint:
 
 ```text
 Token -> GitHub /user -> { login: "dev-user" } -> User Registry -> role: "developer"
@@ -2791,7 +2791,7 @@ flowchart LR
 
 Each adapter converts the channel's native format into a uniform `ChannelContext`.
 The Orchestrator always receives the same DTO, regardless of whether the user is in Slack,
-Google Chat, the terminal, or any future channel. Slack and Google Chat are reference implementations; any messaging platform can be added by implementing the `ChannelAdapter` interface.
+Google Chat, the terminal, or any future channel. Slack and Google Chat are the built-in adapters; any messaging platform can be added by implementing the `ChannelAdapter` interface.
 
 ### 4.4.2 ChannelContext as Agnostic DTO
 
@@ -3728,25 +3728,29 @@ AgentRun is organized as a pnpm/Turborepo monorepo with 11 npm packages and a Go
 AgentRun uses *Provider Registrar* to connect implementations:
 
 ```typescript
-// setup.ts
+// setup.ts — choose the provider package that matches your infrastructure
 import { setProviderRegistrar } from "@agentrun-ai/core";
-import { registerAwsProviders } from "@agentrun-ai/aws";
-import { registerToolFactory } from "@agentrun-ai/tools-aws";
 
+// AWS deployment:
+import { registerAwsProviders } from "@agentrun-ai/aws";
 setProviderRegistrar(registerAwsProviders);
-registerToolFactory();
+
+// GCP deployment:
+// import { registerGcpProviders } from "@agentrun-ai/gcp";
+// setProviderRegistrar(registerGcpProviders);
 ```
 
 Each provider implements a core interface: `LlmProvider`,
 `CredentialsProvider`, `SessionProvider`, `KnowledgeBaseProvider`, etc.
-This allows OSS users to swap AWS implementations for alternatives
-(GCP via `@agentrun-ai/gcp`, Azure, self-hosted) without modifying the core.
+The core has zero cloud dependencies -- all cloud-specific behavior is
+injected at startup. Users can swap between `@agentrun-ai/aws`,
+`@agentrun-ai/gcp`, or any custom implementation without modifying the core.
 
 > **Deployment examples**: The repository includes four examples demonstrating the platform's compute-agnostic design, each implementing the same `PlatformConfig` + `PlatformRegistry` pattern with different provider bindings:
 >
 > | Example | Compute | Queue | Session Store | Notes |
 > |---------|---------|-------|---------------|-------|
-> | `examples/aws-lambda/` | AWS Lambda + SAM | SQS | DynamoDB | Reference deployment with dedup table |
+> | `examples/aws-lambda/` | AWS Lambda + SAM | SQS | DynamoDB | Serverless deployment with dedup table |
 > | `examples/slack-standalone/` | Fastify server | In-memory | In-memory | Single-process, no queue (background tasks) |
 > | `examples/docker/` | Docker + Fastify | In-memory | PostgreSQL | docker-compose with graceful shutdown |
 > | `examples/gcp-cloud-functions/` | GCP Cloud Functions | Pub/Sub | Firestore | GCP-native deployment using `@agentrun-ai/gcp` |
@@ -4453,7 +4457,7 @@ The fundamental difference: in the chat path (Slack, Google Chat, or any async a
 
 ## 5.5 Compute Architecture
 
-> *Note: This section describes the reference deployment on AWS Lambda. The provider pattern (section 4.12) allows alternative compute backends.*
+> *Note: This section uses the AWS Lambda deployment as a concrete example. The same architecture applies to GCP Cloud Functions or any compute backend -- the provider pattern (section 4.12) decouples AgentRun from any specific cloud.*
 
 The data flow reveals that both paths converge in three handler functions. This section details how each scales and behaves under load.
 
@@ -4461,7 +4465,7 @@ The data flow reveals that both paths converge in three handler functions. This 
 
 AgentRun is composed of three handler functions, each with a well-defined scope:
 
-> *Note: The Timeout and Memory values below are AWS Lambda reference values for the default deployment. Alternative compute backends may use different configuration parameters.*
+> *Note: The Timeout and Memory values below are from the AWS Lambda deployment example. GCP Cloud Functions and other compute backends use equivalent configuration parameters.*
 
 > **Key concept**: Ingestion/processing separation. The Command Handler responds to Slack in less than 1 second and enqueues the message to SQS. The Process Handler consumes the queue without time pressure, taking up to 15 minutes. This separation resolves the conflict between Slack's 3-second timeout and AI processing time (5-30 seconds).
 
@@ -4928,20 +4932,20 @@ const result = await tool.handler({ clusterName: "my-cluster" }, null);
 
 **Problem**: Impossible to install AgentRun in another organization without fork + manual adaptation. Fixed roles in a union type (`"viewer" | "developer" | ...`) prevented customization.
 
-**After**: The core was refactored around 10 provider interfaces (7 core + 3 optional RAG-specific), each with a concrete AWS implementation. The core interfaces:
+**After**: The core was refactored around 10 provider interfaces (7 core + 3 optional RAG-specific), with concrete implementations in `@agentrun-ai/aws` and `@agentrun-ai/gcp`. The core interfaces:
 
-| Interface | AWS Implementation | Responsibility |
-|-----------|-------------------|----------------|
-| `LlmProvider` | `BedrockLlmProvider` | Summarization and classification via LLM |
-| `CredentialProvider` | `StsCredentialProvider` | Credentials scoped per role |
-| `SessionStore` | `DynamoSessionStore` | Conversation history |
-| `UsageStore` | `DynamoUsageStore` | Token consumption tracking |
-| `ManifestStore` | `S3ManifestStore` | Reading pack manifests |
-| `QueueProvider` | `SqsQueueProvider` | Asynchronous dispatch |
-| `BootstrapSecretProvider` | `SmBootstrapProvider` | Secrets at cold start |
-| `EmbeddingProvider` *(optional)* | `BedrockEmbeddingProvider` | Text-to-vector conversion (RAG) |
-| `VectorStore` *(optional)* | `PgVectorStore` | Vector similarity search (RAG) |
-| `DocumentIngester` *(optional)* | `MarkdownIngester` | Document chunking for RAG ingestion |
+| Interface | AWS Implementation | GCP Implementation | Responsibility |
+|-----------|-------------------|-------------------|----------------|
+| `LlmProvider` | `BedrockLlmProvider` | `VertexAiLlmProvider` | Summarization and classification via LLM |
+| `CredentialProvider` | `StsCredentialProvider` | `GcpCredentialProvider` | Credentials scoped per role |
+| `SessionStore` | `DynamoSessionStore` | `FirestoreSessionStore` | Conversation history |
+| `UsageStore` | `DynamoUsageStore` | `FirestoreUsageStore` | Token consumption tracking |
+| `ManifestStore` | `S3ManifestStore` | `GcsManifestStore` | Reading pack manifests |
+| `QueueProvider` | `SqsQueueProvider` | `PubSubQueueProvider` | Asynchronous dispatch |
+| `BootstrapSecretProvider` | `SmBootstrapProvider` | `GcpSecretProvider` | Secrets at cold start |
+| `EmbeddingProvider` *(optional)* | `BedrockEmbeddingProvider` | `VertexEmbeddingProvider` | Text-to-vector conversion (RAG) |
+| `VectorStore` *(optional)* | `PgVectorStore` | `PgVectorStore` | Vector similarity search (RAG) |
+| `DocumentIngester` *(optional)* | `MarkdownIngester` | `MarkdownIngester` | Document chunking for RAG ingestion |
 
 The `PlatformRegistry` (singleton) stores the instances and is accessed by the entire core. The `PlatformConfig` (YAML validated with Zod) defines which implementation to use, plus roles, users, resources, and environment. The `Role` type changed from a union type to `string` -- any organization can define custom roles.
 
@@ -5380,8 +5384,9 @@ interface KnowledgeBaseProvider {
 ```
 
 The AWS implementation (`BedrockKBProvider`) uses `RetrieveCommand` from
-`@aws-sdk/client-bedrock-agent-runtime`, eliminating the need to generate
-embeddings manually.
+`@aws-sdk/client-bedrock-agent-runtime`; the GCP implementation
+(`VertexSearchProvider`) uses Vertex AI Search. Both eliminate the need
+to generate embeddings manually.
 
 ### 5.11.3 Ingestion Pipeline
 
@@ -5448,7 +5453,7 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *Bedrock Knowledge Base* | AWS managed service that encapsulates embedding, chunking, and vector search for RAG. Replaces custom implementation (PgVectorStore + BedrockEmbeddingProvider) at zero marginal cost. |
 | *Agent SDK* | Library that encapsulates the AI model's reasoning loop, managing tool calls, conversation history, and result summarization. |
 | *allowedTools* | Static list of tools that the Agent SDK can invoke in a session. First layer of access control. |
-| *BootstrapSecretProvider* | Platform interface for loading secrets at startup (cold start). AWS implementation: `SmBootstrapProvider` (Secrets Manager). |
+| *BootstrapSecretProvider* | Platform interface for loading secrets at startup (cold start). Implementations: `SmBootstrapProvider` (AWS Secrets Manager), `GcpSecretProvider` (GCP Secret Manager). |
 | *Bridge* | Go binary that connects Claude Code to the MCP Server. Acts as a stdin/stdout proxy for JSON-RPC via HTTP, with OAuth authentication and token storage in the OS *keychain*. |
 | *Catalog* | Component that discovers, validates, and registers YAML manifests at initialization time, forming the registry of available tools, workflows, use-cases, and skills. |
 | *classifyQuery* | Pure function in `@agentrun-ai/core` that categorizes natural language queries into `ResponseCategory` values using bilingual keyword matching (Portuguese + English). Used by the Orchestrator for skill routing and by the eval framework for trigger validation. |
@@ -5456,7 +5461,7 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *Channel Adapter* | Design pattern that translates each channel's native protocol (Slack, CLI, REST API) to a uniform internal structure (*ChannelContext*), decoupling the user interface from business logic. |
 | *ChannelContext* | Channel-agnostic DTO that carries userId, message text, sessionId, and response callback. Produced by the *Channel Adapter* and consumed by the *Orchestrator*. |
 | *checksum* | Cryptographic hash (SHA256) used to verify binary integrity during *Bridge* updates. |
-| *CredentialProvider* | Platform interface that returns credentials scoped per role. The return type is `unknown` (opaque) -- only tool handlers know how to interpret it. AWS implementation: `StsCredentialProvider` (STS AssumeRole). |
+| *CredentialProvider* | Platform interface that returns credentials scoped per role. The return type is `unknown` (opaque) -- only tool handlers know how to interpret it. Implementations: `StsCredentialProvider` (AWS STS AssumeRole), `GcpCredentialProvider` (GCP IAM). |
 | *cold start* | First invocation of a handler (e.g., a Lambda function), when the runtime needs to be initialized. Core bundle manifests are loaded at this time. |
 | *context window* | Maximum number of tokens an AI model can process in a single call. Reducing the context window decreases cost and latency. |
 | DAG | *Directed Acyclic Graph*. Cycle-free graph structure used to model the inheritance hierarchy between packs, ensuring circular dependencies are rejected. |
@@ -5464,7 +5469,7 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *Device Flow* | OAuth flow (RFC 8628) designed for CLIs and devices without an integrated browser, where the user authorizes access in a separate browser by entering a code. |
 | *Direct Executor* | Executor that calls tool handlers directly, without Agent SDK intermediation, followed by a single LLM call for summarization. Suited for deterministic skills. |
 | *DocumentIngester* | Platform interface for chunking documents into embeddable segments. Used by the RAG pipeline to split source documents before embedding. Default implementation: MarkdownIngester (heading-based chunking). |
-| *EmbeddingProvider* | Platform interface for text-to-vector conversion. Used by the RAG pipeline to generate embeddings for document chunks and queries. AWS implementation: Bedrock Titan Embed v2. |
+| *EmbeddingProvider* | Platform interface for text-to-vector conversion. Used by the RAG pipeline to generate embeddings for document chunks and queries. Implementations: `BedrockEmbeddingProvider` (AWS Bedrock Titan), `VertexEmbeddingProvider` (GCP Vertex AI). |
 | *Eval* | Manifest kind (`kind: Eval`) that declares test cases for skill routing validation. Supports two phases: *trigger eval* (instant keyword matching) and *execution eval* (live infrastructure). Six expectation types: `contains`, `not_contains`, `tool_called`, `tool_not_called`, `matches_regex`, `llm_judge`. |
 | DynamoDB | AWS NoSQL database service used by AgentRun for conversation sessions, usage tracking, and API key registration. |
 | *Factory* | Design pattern that centralizes object creation (tools, handlers), ensuring different types are instantiated by the correct factory. |
@@ -5473,11 +5478,11 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *hook* | Function that intercepts the lifecycle of a tool call. AgentRun uses `preToolUse` (before execution, for security) and `postToolUse` (after execution, for auditing). |
 | IDP | *Internal Developer Platform*. Internal platform that provides self-service tools and services for development teams. |
 | *keychain* | Encrypted credential storage of the operating system (macOS Keychain, GNOME Keyring, Windows Credential Manager). |
-| *KnowledgeBaseProvider* | Interface in `@agentrun-ai/core` that abstracts queries to vector knowledge bases. AWS implementation uses Bedrock KB (`BedrockKBProvider`); custom implementation uses pgvector directly. |
+| *KnowledgeBaseProvider* | Interface in `@agentrun-ai/core` that abstracts queries to vector knowledge bases. Implementations: `BedrockKbProvider` (AWS Bedrock KB), `VertexSearchProvider` (GCP Vertex AI Search); custom implementations can use pgvector directly. |
 | *last-write-wins* | Conflict resolution strategy where the most recent version overwrites the previous one. Used in pack inheritance. |
-| *LlmProvider* | Platform interface for language model calls (summarization, classification). AWS implementation: `BedrockLlmProvider`. |
+| *LlmProvider* | Platform interface for language model calls (summarization, classification). Implementations: `BedrockLlmProvider` (AWS), `VertexAiLlmProvider` (GCP). |
 | LLM | *Large Language Model*. Large-scale language model that processes natural language text. AgentRun uses LLMs for query classification and result summarization. |
-| *ManifestStore* | Platform interface for reading YAML manifests from remote packs. AWS implementation: `S3ManifestStore`. |
+| *ManifestStore* | Platform interface for reading YAML manifests from remote packs. Implementations: `S3ManifestStore` (AWS), `GcsManifestStore` (GCP). |
 | *manifest* | Declarative YAML file that defines the platform's behavior without modifying the runtime. Types: Tool, Workflow, UseCase, Skill, Pack. |
 | MCP | *Model Context Protocol*. JSON-RPC 2.0 protocol that standardizes communication between AI models and tool servers. |
 | *multi-turn* | Interaction with multiple rounds between user and agent, where each response can generate new questions or tool calls. |
@@ -5494,16 +5499,16 @@ Recurring technical terms in this book, organized in alphabetical order.
 | RBAC | *Role-Based Access Control*. Access control model based on roles. AgentRun defines extensible roles via `PlatformConfig` -- the *well-known* ones (`viewer`, `executive`, `developer`, `tech_lead`, `platform`) cover common scenarios, but organizations can add custom roles without modifying code. |
 | *read-only* | AgentRun's architectural principle: the platform observes infrastructure but never modifies it, eliminating entire categories of risk. |
 | *ResponseCategory* | Enum returned by `classifyQuery()`: `greeting`, `lambda`, `kubernetes`, `database`, `logs`, `pull_requests`, `metrics`, `sqs`, `generic`. Determines which skill the Orchestrator selects for a given query. |
-| *VectorStore* | Platform interface for vector similarity search. Used by the RAG pipeline for chunk retrieval based on semantic similarity. AWS implementation: Aurora pgvector. |
-| *QueueProvider* | Platform interface for asynchronous message dispatch. AWS implementation: `SqsQueueProvider` (SQS). |
+| *VectorStore* | Platform interface for vector similarity search. Used by the RAG pipeline for chunk retrieval based on semantic similarity. Implementation: `PgVectorStore` (pgvector, cloud-agnostic). |
+| *QueueProvider* | Platform interface for asynchronous message dispatch. Implementations: `SqsQueueProvider` (AWS SQS), `PubSubQueueProvider` (GCP Pub/Sub). |
 | *scope* | Parameter that filters which tools are exposed to the MCP client, organizing them by domain (`aws`, `github`, `jira`). |
 | *skill* | Pre-built prompt with tool list and output format, executable as a slash command. Supports `direct` (deterministic) or `agent` (agentic) mode. |
 | *stale-while-revalidate* | Cache strategy where expired data continues being served while an update is fetched in background, prioritizing availability over freshness. |
 | *StreamableHTTP* | Future MCP transport that replaces SSE with bidirectional streaming. Enables partial responses and server-push notifications during execution of long workflows. |
-| *SessionStore* | Platform interface for conversation history persistence. AWS implementation: `DynamoSessionStore` (DynamoDB). |
+| *SessionStore* | Platform interface for conversation history persistence. Implementations: `DynamoSessionStore` (AWS DynamoDB), `FirestoreSessionStore` (GCP Firestore). |
 | SQS | *Simple Queue Service*. AWS queue service used to decouple ingestion (Command Handler) from processing (Process Handler). |
 | *tool* | Atomic capability registered in the catalog. Native types (`mcp-server`) have TypeScript handlers; declarative types (`aws-sdk`, `http`, `lambda`) register only access config and are invoked via workflow steps. |
-| *UsageStore* | Platform interface for tracking token consumption per user. AWS implementation: `DynamoUsageStore` (DynamoDB). |
+| *UsageStore* | Platform interface for tracking token consumption per user. Implementations: `DynamoUsageStore` (AWS DynamoDB), `FirestoreUsageStore` (GCP Firestore). |
 | *use-case* | User intent mapped by keywords to a set of workflows. The `classifyQuery()` function (see section 4.14.1) determines the *ResponseCategory*, which the Orchestrator maps to the appropriate use-case. |
 | *warm-start* | Handler invocation that reuses an already-initialized runtime (e.g., Lambda warm start), with HTTP clients and in-memory caches preserved. |
 | *workflow* | Composition of tools to achieve a goal. Two modes: *flat* (tool list for RBAC) or *step-based* (deterministic pipeline with `steps[]`). Workflows with steps are auto-registered as invocable MCP tools. |

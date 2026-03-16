@@ -136,7 +136,7 @@ See existing tools in `packages/tools-github/src/` and `packages/tools-jira/src/
 
 ## Adding a New Provider Package
 
-AgentRun's core is cloud-agnostic. `@agentrun-ai/aws` is the reference implementation, and `@agentrun-ai/gcp` is the second complete implementation. To add support for another cloud (e.g., `@agentrun-ai/azure`):
+AgentRun's core is cloud-agnostic. `@agentrun-ai/aws` and `@agentrun-ai/gcp` are the two production-ready implementations. To add support for another cloud (e.g., `@agentrun-ai/azure`):
 
 1. Create a new package under `packages/` (e.g., `packages/gcp/`)
 2. Depend on `@agentrun-ai/core` for the provider interfaces
@@ -159,7 +159,7 @@ AgentRun's core is cloud-agnostic. `@agentrun-ai/aws` is the reference implement
 5. Add the package to `pnpm-workspace.yaml`
 6. Update `commitlint.config.mjs` to include the new scope
 
-See `packages/aws/src/index.ts` (AWS) and `packages/gcp/src/index.ts` (GCP) for the registration pattern used by existing implementations.
+See `packages/aws/src/index.ts` and `packages/gcp/src/index.ts` for the registration pattern used by the existing implementations.
 
 ## Reporting Issues
 
