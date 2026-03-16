@@ -18,7 +18,7 @@ AgentRun is a self-hosted runtime that turns declarative YAML manifests into a f
 
 Every infrastructure concern in AgentRun is behind a TypeScript interface defined in `@agentrun-ai/core`. The core package has **zero cloud dependencies** — all cloud-specific behavior is injected at startup via `PlatformRegistry`.
 
-`@agentrun-ai/aws` is the reference implementation. `@agentrun-ai/gcp` provides Google Cloud providers. To run on another cloud, implement the same interfaces and register your providers:
+`@agentrun-ai/aws` and `@agentrun-ai/gcp` are the two production-ready implementations. To run on another cloud, implement the same interfaces and register your providers:
 
 ```typescript
 import { setProviderRegistrar, bootstrapPlatform } from "@agentrun-ai/core";
@@ -39,7 +39,7 @@ Channel Input → Identity Resolution → RBAC Gating → Routing
 
 ### Provider Interfaces
 
-Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. The `@agentrun-ai/aws` package provides the reference implementation; alternatives can be built by implementing the same interfaces.
+Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. The `@agentrun-ai/aws` and `@agentrun-ai/gcp` packages provide production-ready implementations; additional providers can be built by implementing the same interfaces.
 
 | Interface | Purpose | AWS impl (`@agentrun-ai/aws`) | GCP impl (`@agentrun-ai/gcp`) |
 |-----------|---------|-------------------------------|-------------------------------|
@@ -87,43 +87,25 @@ Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. T
 
 ## Quick Start
 
-### Option A: AWS providers
+Pick the cloud provider package that matches your infrastructure, then wire it up:
 
 ```bash
+# AWS (Bedrock, DynamoDB, S3, SQS, STS, Secrets Manager)
 npm install @agentrun-ai/core @agentrun-ai/aws @agentrun-ai/channel-slack
-```
 
-```typescript
-import { setProviderRegistrar, bootstrapPlatform, processRequest } from "@agentrun-ai/core";
-import { registerAwsProviders } from "@agentrun-ai/aws";
-import { SlackChannelAdapter } from "@agentrun-ai/channel-slack";
-
-// Use the AWS reference implementation (Bedrock, DynamoDB, S3, SQS, STS)
-setProviderRegistrar(registerAwsProviders);
-await bootstrapPlatform();
-
-const adapter = new SlackChannelAdapter();
-await processRequest(adapter, {
-    userId: "U12345",
-    channelId: "C12345",
-    text: "show me the cluster status",
-    threadTs: "1234567890.123456",
-});
-```
-
-### Option B: GCP providers
-
-```bash
+# GCP (Vertex AI, Firestore, Cloud Storage, Pub/Sub, Secret Manager)
 npm install @agentrun-ai/core @agentrun-ai/gcp @agentrun-ai/channel-slack
 ```
 
 ```typescript
 import { setProviderRegistrar, bootstrapPlatform, processRequest } from "@agentrun-ai/core";
-import { registerGcpProviders } from "@agentrun-ai/gcp";
 import { SlackChannelAdapter } from "@agentrun-ai/channel-slack";
 
-// Use the GCP implementation (Vertex AI, Firestore, Cloud Storage, Pub/Sub, Secret Manager)
-setProviderRegistrar(registerGcpProviders);
+// Choose ONE provider package:
+import { registerAwsProviders } from "@agentrun-ai/aws";
+// import { registerGcpProviders } from "@agentrun-ai/gcp";
+
+setProviderRegistrar(registerAwsProviders);   // or registerGcpProviders
 await bootstrapPlatform();
 
 const adapter = new SlackChannelAdapter();
@@ -140,7 +122,7 @@ await processRequest(adapter, {
 | Example | Description |
 |---------|-------------|
 | [`aws-lambda`](examples/aws-lambda) | AWS serverless: API Gateway + Lambda + SQS + DynamoDB |
-| [`gcp-cloud-functions`](examples/gcp-cloud-functions) | Google Cloud Functions + Pub/Sub |
+| [`gcp-cloud-functions`](examples/gcp-cloud-functions) | GCP serverless: Cloud Functions + Pub/Sub + Firestore |
 | [`gchat-standalone`](examples/gchat-standalone) | Google Chat bot via Fastify + HTTP endpoint |
 | [`slack-standalone`](examples/slack-standalone) | Single Fastify server, no external dependencies |
 | [`docker`](examples/docker) | Docker Compose with PostgreSQL (pgvector) + Redis |

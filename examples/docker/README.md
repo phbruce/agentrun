@@ -25,7 +25,7 @@ Slack ──> nginx ──> │  AgentRun (Fastify)       │
                     └──────────────────────────┘
 ```
 
-> **AWS services used by default**: The reference `setup.ts` uses `@agentrun-ai/aws`, which requires: **Bedrock** (LLM + embeddings), **STS** (per-role credentials), **Secrets Manager** (bootstrap secrets), **S3** (manifest storage), **SQS** (async queue), and **DynamoDB** (sessions + usage tracking). PostgreSQL and Redis run locally in Docker.
+> **Cloud provider note**: The default `setup.ts` uses `@agentrun-ai/aws` (Bedrock, STS, Secrets Manager, S3, SQS, DynamoDB). To use GCP instead, replace `registerAwsProviders` with `registerGcpProviders` from `@agentrun-ai/gcp` (Vertex AI, GCP IAM, Secret Manager, Cloud Storage, Pub/Sub, Firestore). See "Swapping Providers" below. PostgreSQL and Redis run locally in Docker regardless of cloud provider.
 
 ## Prerequisites
 
@@ -120,16 +120,27 @@ For production, consider:
 5. **Use Docker secrets** instead of environment variables for sensitive values
 6. **Run multiple replicas** behind a load balancer
 
-## Swapping Providers for Non-AWS Setup
+## Swapping Providers
 
-The Docker example uses `@agentrun-ai/aws` by default, but AgentRun's core is cloud-agnostic. To run without AWS:
+The Docker example uses `@agentrun-ai/aws` by default, but AgentRun's core is cloud-agnostic. Two provider packages are available out of the box:
 
-1. Edit `src/setup.ts` to replace `registerAwsProviders` with your own provider registration
-2. Implement the required interfaces from `@agentrun-ai/core` (`LlmProvider`, `SessionStore`, `ManifestStore`, etc.)
-3. For a fully self-contained setup, use PostgreSQL for sessions/usage (implement `SessionStore` and `UsageStore` against the local PostgreSQL) and the local filesystem for manifests (implement `ManifestStore` reading from a mounted volume)
-4. Update the environment variables in `.env` to match your provider requirements
+**To switch to GCP:**
 
-See the [Provider Interfaces table](../../README.md#provider-interfaces) in the main README for the full list of interfaces and alternative implementations.
+1. Install the GCP package: `npm install @agentrun-ai/gcp`
+2. Edit `src/setup.ts`:
+   ```typescript
+   import { registerGcpProviders } from "@agentrun-ai/gcp";
+   setProviderRegistrar(registerGcpProviders);
+   ```
+3. Replace `AWS_*` environment variables in `.env` with GCP equivalents (`GCP_PROJECT_ID`, `GCP_REGION`, etc.)
+
+**To use a different cloud or self-hosted stack:**
+
+1. Implement the required interfaces from `@agentrun-ai/core` (`LlmProvider`, `SessionStore`, `ManifestStore`, etc.)
+2. For a fully self-contained setup, use PostgreSQL for sessions/usage (implement `SessionStore` and `UsageStore` against the local PostgreSQL) and the local filesystem for manifests (implement `ManifestStore` reading from a mounted volume)
+3. Update the environment variables in `.env` to match your provider requirements
+
+See the [Provider Interfaces table](../../README.md#provider-interfaces) in the main README for the full list of interfaces and implementations.
 
 ## Project Structure
 
