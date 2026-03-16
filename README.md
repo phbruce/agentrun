@@ -134,7 +134,11 @@ await processRequest(adapter, {
 - [Security](SECURITY.md) — Vulnerability disclosure policy
 - [CLA](CLA.md) — Contributor License Agreement
 
-## Manifest Example
+## Manifest Examples
+
+AgentRun uses 6 manifest kinds. All follow the `apiVersion: agentrun/v1` pattern:
+
+### Tool — atomic capability
 
 ```yaml
 # tools/list-open-prs.yaml
@@ -143,29 +147,124 @@ kind: Tool
 metadata:
   name: list-open-prs
 spec:
-  mcpTool: list_open_prs
-  description: List open pull requests for a repository
-  category: ci-cd
+  type: mcp-server           # mcp-server | aws-sdk | http | lambda
+  mcpTool: list_open_prs     # maps to MCP tool registry name
+  description: List open pull requests
+  category: development
   readOnly: true
-  parameters:
-    repo:
-      type: string
-      description: Repository name (owner/repo)
-      required: true
 ```
 
+### Workflow — composes tools
+
 ```yaml
-# use-cases/infra-health.yaml
+# workflows/review-pull-requests.yaml
+apiVersion: agentrun/v1
+kind: Workflow
+metadata:
+  name: review-pull-requests
+spec:
+  description: Review open PRs across repositories
+  tools:
+    - list-open-prs
+    - get-pr-details
+    - recent-commits
+```
+
+### Workflow with steps — deterministic pipeline
+
+```yaml
+# workflows/check-billing.yaml
+apiVersion: agentrun/v1
+kind: Workflow
+metadata:
+  name: check-billing
+spec:
+  description: Get AWS cost breakdown for the current month
+  tools:
+    - check-billing
+  steps:
+    - tool: check-billing
+      action: GetCostAndUsage
+      input:
+        TimePeriod:
+          Start: "{{ startDate }}"
+          End: "{{ endDate }}"
+        Granularity: MONTHLY
+        Metrics: ["UnblendedCost"]
+      outputTransform: "ResultsByTime[0].Total.UnblendedCost"
+      timeoutMs: 10000
+```
+
+### UseCase — maps user intent to workflows
+
+```yaml
+# use-cases/code-review.yaml
 apiVersion: agentrun/v1
 kind: UseCase
 metadata:
-  name: infra-health
+  name: code-review
 spec:
-  label: Infrastructure Health
-  description: Check the health of all infrastructure components
+  description: Review PRs and recent commits
+  keywords: [pr, pull request, review, merge, commit, deploy]
   workflows:
-    - health-check
-  icon: heart_pulse
+    - review-pull-requests
+  scope: github              # MCP server scope filtering
+  template: |
+    List open PRs with author, title, status, and highlights.
+```
+
+### Skill — slash command with prompt + tools
+
+```yaml
+# skills/health-check.yaml
+apiVersion: agentrun/v1
+kind: Skill
+metadata:
+  name: health-check
+spec:
+  command: /health-check
+  description: Full infrastructure health check
+  mode: direct               # direct (fast) | agent (LLM reasoning)
+  tools:
+    - describe-eks-cluster
+    - describe-rds
+    - list-lambdas
+    - list-sqs-queues
+  prompt: |
+    Check all infrastructure components and report status.
+    Use OK/Warning/Critical for each service.
+  allowedRoles: [developer, operator, admin]
+  maxBudgetUsd: 0.15
+```
+
+### Eval — test cases for skill routing
+
+```yaml
+# evals/health-check.yaml
+apiVersion: agentrun/v1
+kind: Eval
+metadata:
+  name: health-check
+spec:
+  target:
+    kind: Skill
+    name: health-check
+  triggerCases:
+    - query: "how is the infrastructure?"
+      shouldTrigger: true
+    - query: "find the checkout lambda"
+      shouldTrigger: false
+  executionCases:
+    - id: full-health
+      prompt: "check infrastructure health"
+      expectations:
+        - type: tool_called
+          value: describe_eks_cluster
+        - type: tool_called
+          value: describe_rds
+  config:
+    passThreshold: 0.8
+    maxBudgetPerCaseUsd: 0.15
 ```
 
 ## License
