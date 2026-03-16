@@ -35,7 +35,7 @@ variable "project_id" {
 variable "region" {
   description = "GCP region for all resources"
   type        = string
-  default     = "us-central1"
+  default     = "southamerica-east1"
 }
 
 variable "environment" {

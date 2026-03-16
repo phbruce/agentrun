@@ -16,3 +16,6 @@ bridge/agentrun-bridge
 *.key
 credentials*
 /tmp/
+examples/gcp-cloud-functions/terraform/placeholder.zip
+examples/gcp-cloud-functions/terraform/.terraform*
+examples/gcp-cloud-functions/terraform/*.tfstate*

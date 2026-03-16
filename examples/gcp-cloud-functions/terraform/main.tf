@@ -1,10 +1,36 @@
 # AgentRun GCP Cloud Functions — all infrastructure in one file.
 #
-# Provisions: Service Account, Cloud Storage, Pub/Sub, Firestore,
+# Provisions: APIs, Service Account, Cloud Storage, Pub/Sub, Firestore,
 # Secret Manager secrets, and 4 Cloud Functions (2nd gen).
 
 locals {
   prefix = "agentrun-${var.environment}"
+
+  required_apis = [
+    "cloudfunctions.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "run.googleapis.com",
+    "pubsub.googleapis.com",
+    "firestore.googleapis.com",
+    "secretmanager.googleapis.com",
+    "aiplatform.googleapis.com",
+    "storage.googleapis.com",
+    "eventarc.googleapis.com",
+    "eventarcpublishing.googleapis.com",
+    "iam.googleapis.com",
+  ]
+}
+
+# ─── Enable required APIs ────────────────────────────────────────────────────
+
+resource "google_project_service" "apis" {
+  for_each = toset(local.required_apis)
+
+  project = var.project_id
+  service = each.value
+
+  disable_dependent_services = false
+  disable_on_destroy         = false
 }
 
 # ─── Service Account ──────────────────────────────────────────────────────────
@@ -13,6 +39,8 @@ resource "google_service_account" "runtime" {
   account_id   = "${local.prefix}-runtime"
   display_name = "AgentRun Cloud Functions runtime"
   description  = "Service account used by all AgentRun Cloud Functions"
+
+  depends_on = [google_project_service.apis]
 }
 
 # ─── Cloud Storage — Manifests Bucket ─────────────────────────────────────────
@@ -54,9 +82,9 @@ resource "google_storage_bucket" "function_source" {
 
 # Placeholder source archive (user replaces with real deployment artifact)
 resource "google_storage_bucket_object" "placeholder_source" {
-  name    = "placeholder.zip"
-  bucket  = google_storage_bucket.function_source.name
-  content = "placeholder — deploy real code via gcloud or CI/CD"
+  name   = "placeholder.zip"
+  bucket = google_storage_bucket.function_source.name
+  source = "${path.module}/placeholder.zip"
 }
 
 # ─── Pub/Sub ──────────────────────────────────────────────────────────────────
@@ -84,7 +112,11 @@ resource "google_secret_manager_secret" "slack_bot_token" {
   secret_id = "${local.prefix}-slack-bot-token"
 
   replication {
-    auto {}
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
   }
 }
 
@@ -92,7 +124,11 @@ resource "google_secret_manager_secret" "github_token" {
   secret_id = "${local.prefix}-github-token"
 
   replication {
-    auto {}
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
   }
 }
 
@@ -100,7 +136,11 @@ resource "google_secret_manager_secret" "gchat_service_account" {
   secret_id = "${local.prefix}-gchat-service-account"
 
   replication {
-    auto {}
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
   }
 }
 
