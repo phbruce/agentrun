@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { ManifestCatalog, UseCaseDef, WorkflowDef, SkillDef } from "./types.js";
+import type { ManifestCatalog, UseCaseDef, WorkflowDef, SkillDef, ToolDef, KnowledgeBaseDef } from "./types.js";
 import { loadManifests } from "./loader.js";
 import { loadCatalogForPacks } from "./packLoader.js";
 import type { Role } from "../rbac/types.js";
@@ -26,6 +26,12 @@ export function setCatalog(catalog: ManifestCatalog): void {
 export function getUseCasesForRole(role: Role): UseCaseDef[] {
     const { allowedUseCases } = getRoleUseCaseConfig(role);
     const catalog = getCatalog();
+
+    // Wildcard: return all use cases
+    if (allowedUseCases.includes("*")) {
+        return [...catalog.useCases.values()];
+    }
+
     return allowedUseCases
         .map((name) => catalog.useCases.get(name))
         .filter((uc): uc is UseCaseDef => uc !== undefined);
@@ -33,6 +39,9 @@ export function getUseCasesForRole(role: Role): UseCaseDef[] {
 
 /** MCP server name used for Agent SDK tool prefix (mcp__{name}__). */
 const MCP_SERVER_NAME = "infra-tools";
+
+/** Tool types that are served via the MCP registry (core + declarative). */
+const REGISTRY_TOOL_TYPES = new Set(["mcp-server", "aws-sdk", "http", "lambda"]);
 
 export function getMcpToolsForRole(role: Role): string[] {
     const useCases = getUseCasesForRole(role);
@@ -45,8 +54,13 @@ export function getMcpToolsForRole(role: Role): string[] {
             if (!wf) continue;
             for (const toolName of wf.tools) {
                 const tool = catalog.tools.get(toolName);
-                if (tool && tool.type === "mcp-server" && tool.mcpTool) {
-                    mcpTools.add(tool.mcpTool);
+                if (tool && REGISTRY_TOOL_TYPES.has(tool.type)) {
+                    // For mcp-server tools with mcpTool, use the prefixed name
+                    if (tool.type === "mcp-server" && tool.mcpTool) {
+                        mcpTools.add(tool.mcpTool);
+                    }
+                    // For all registry tool types, also add the tool name directly
+                    mcpTools.add(tool.name);
                 }
             }
             // Also include workflows-with-steps as callable MCP tools
@@ -57,6 +71,84 @@ export function getMcpToolsForRole(role: Role): string[] {
     }
 
     return Array.from(mcpTools);
+}
+
+/** Get tool definitions reachable for a role via use-cases → workflows → tools. */
+export function getToolDefsForRole(role: Role): ToolDef[] {
+    const useCases = getUseCasesForRole(role);
+    const catalog = getCatalog();
+    const seen = new Set<string>();
+    const result: ToolDef[] = [];
+
+    for (const uc of useCases) {
+        for (const wfName of uc.workflows) {
+            const wf = catalog.workflows.get(wfName);
+            if (!wf) continue;
+            for (const toolName of wf.tools) {
+                if (seen.has(toolName)) continue;
+                seen.add(toolName);
+                const tool = catalog.tools.get(toolName);
+                if (tool && REGISTRY_TOOL_TYPES.has(tool.type)) {
+                    result.push(tool);
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+/** Get knowledge bases accessible for a role based on tag matching against use-case names/scopes. */
+export function getKnowledgeBasesForRole(role: Role): KnowledgeBaseDef[] {
+    const catalog = getCatalog();
+    if (catalog.knowledgeBases.size === 0) return [];
+
+    const useCases = getUseCasesForRole(role);
+    const roleScopes = new Set<string>();
+    for (const uc of useCases) {
+        roleScopes.add(uc.name);
+        if (uc.scope) roleScopes.add(uc.scope);
+    }
+
+    const result: KnowledgeBaseDef[] = [];
+    for (const kb of catalog.knowledgeBases.values()) {
+        // KB with no tags or wildcard tag → available to all roles
+        if (kb.tags.length === 0 || kb.tags.includes("*")) {
+            result.push(kb);
+            continue;
+        }
+        // KB tags overlap with role's use-case names or scopes
+        if (kb.tags.some(tag => roleScopes.has(tag))) {
+            result.push(kb);
+        }
+    }
+
+    return result;
+}
+
+/** Get tool definitions for a specific use case's workflows. */
+export function getToolDefsForUseCase(useCaseName: string): ToolDef[] {
+    const catalog = getCatalog();
+    const uc = catalog.useCases.get(useCaseName);
+    if (!uc) return [];
+
+    const seen = new Set<string>();
+    const result: ToolDef[] = [];
+
+    for (const wfName of uc.workflows) {
+        const wf = catalog.workflows.get(wfName);
+        if (!wf) continue;
+        for (const toolName of wf.tools) {
+            if (seen.has(toolName)) continue;
+            seen.add(toolName);
+            const tool = catalog.tools.get(toolName);
+            if (tool && REGISTRY_TOOL_TYPES.has(tool.type)) {
+                result.push(tool);
+            }
+        }
+    }
+
+    return result;
 }
 
 export function getSkillToolsForRole(role: Role): { name: string; skillRef: string; description: string }[] {
@@ -92,7 +184,15 @@ export function getWorkflowsForUseCase(useCaseName: string): WorkflowDef[] {
         .filter((wf): wf is WorkflowDef => wf !== undefined);
 }
 
-export function resolveUseCaseFromQuery(query: string, role: Role): UseCaseDef | null {
+export interface UseCaseMatch {
+    useCase: UseCaseDef | null;
+    score: number;
+    /** Confident when score >= 2 (multi-word match or multiple single keywords). */
+    confident: boolean;
+}
+
+/** Score-based use-case matching with confidence. Used as fast-path for two-layer routing. */
+export function matchUseCaseFromQuery(query: string, role: Role): UseCaseMatch {
     const useCases = getUseCasesForRole(role);
     const normalized = query.toLowerCase();
 
@@ -112,7 +212,12 @@ export function resolveUseCaseFromQuery(query: string, role: Role): UseCaseDef |
         }
     }
 
-    return bestMatch;
+    return { useCase: bestMatch, score: bestScore, confident: bestScore >= 2 };
+}
+
+/** Simple keyword-based use-case resolution (backward compat). */
+export function resolveUseCaseFromQuery(query: string, role: Role): UseCaseDef | null {
+    return matchUseCaseFromQuery(query, role).useCase;
 }
 
 // ---------------------------------------------------------------------------
@@ -220,9 +325,6 @@ export async function getMcpToolsForRoleWithPacks(role: Role, packs: string[]): 
  * Returns tool metadata.name (e.g., "list_lambdas") which matches the
  * tool registry keys used by the MCP server.
  */
-/** Tool types that are served via the MCP registry (core + declarative). */
-const REGISTRY_TOOL_TYPES = new Set(["mcp-server", "aws-sdk", "http", "lambda"]);
-
 export async function getMcpToolNamesForRoleWithPacks(role: Role, packs: string[]): Promise<string[]> {
     const catalog = await getCatalogForPacks(packs);
     const toolNames = new Set<string>();

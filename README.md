@@ -9,7 +9,7 @@ AgentRun is a self-hosted runtime that turns declarative YAML manifests into a f
 - **Manifest-driven** — Define tools, workflows, use-cases, skills, and knowledge bases as Kubernetes-style YAML
 - **Multi-channel** — Same agent brain serves Slack, MCP (Model Context Protocol), and future channels
 - **RBAC-gated** — Identity resolution, role mapping, and per-role use-case access with budget controls
-- **Dual execution** — Skills run as `direct` (deterministic, fast) or `agent` (LLM reasoning loop)
+- **Triple execution** — Skills run as `direct` (deterministic, fast), `agent` (Claude Agent SDK reasoning loop), or `generic` (model-agnostic function calling with any LLM)
 - **Pack system** — Extension bundles loaded from any ManifestStore (S3, GCS, local filesystem), grouping tools + workflows + use-cases + skills
 - **Session memory** — Per-thread conversation persistence with configurable TTL
 - **RAG** — Built-in vector search over ingested documents (pgvector)
@@ -29,11 +29,27 @@ setProviderRegistrar(registerGcpProviders);
 await bootstrapPlatform();
 ```
 
+## Design Philosophy
+
+AgentRun's harness design follows the principles outlined in Anthropic's [Harness Design for Long-Running Apps](https://www.anthropic.com/engineering/harness-design-long-running-apps) engineering blog post. Every component in the harness encodes an assumption about what the model can't do on its own — and those assumptions are designed to be re-evaluated as models improve.
+
+| Principle | Implementation |
+|-----------|---------------|
+| **Task Decomposition** | Catalog hierarchy: use-cases → workflows → tools → skills. Queries are routed to the minimal set of tools needed. |
+| **Separation of Generation from Evaluation** | Optional `evaluator` in `GenericAgentConfig` — an independent LLM call that scores responses against explicit quality criteria before delivery. |
+| **Making Quality Gradable** | Four default criteria with weights: factual accuracy (0.4), completeness (0.3), conciseness (0.2), actionability (0.1). Custom criteria supported. |
+| **Context Management** | Session history with automatic summarization when context grows large. Structured handoffs preserve tool call metadata across turns. |
+| **Structured Handoffs** | `buildPromptWithHistory` includes tool usage metadata so subsequent turns know what was already queried, preventing redundant calls. |
+| **Iterative Simplification** | `GenericAgentConfig` accepts pluggable `callLlm` and `executeTool` — swap the LLM, add or remove the evaluator, or change tool schemas without touching the harness. |
+
+The evaluator is opt-in and disabled by default. When enabled, it adds ~500 tokens of overhead per query but catches hallucinations, incomplete answers, and filler before the response reaches the user.
+
 ## Architecture
 
 ```
 Channel Input → Identity Resolution → RBAC Gating → Routing
-  → Execution (direct tool calls OR agentic LLM loop)
+  → Execution (direct tool calls | agentic LLM loop | generic model-agnostic runner)
+  → [Optional: Response Evaluation against quality criteria]
   → Session Persistence → Channel Delivery → Usage Tracking
 ```
 
@@ -117,6 +133,35 @@ await processRequest(adapter, {
     text: "show me the cluster status",
     threadTs: "1234567890.123456",
 });
+```
+
+### Model-agnostic (Generic Runner)
+
+For non-Anthropic LLMs (Gemini, GPT, Ollama), use `processGenericQuery` — it accepts pluggable `callLlm` and `executeTool` functions and auto-derives allowed tools and KB context from the catalog:
+
+```typescript
+import { processGenericQuery, bootstrapPlatform, setProviderRegistrar } from "@agentrun-ai/core";
+import { registerGcpProviders } from "@agentrun-ai/gcp";
+
+setProviderRegistrar(registerGcpProviders);
+await bootstrapPlatform();
+
+const result = await processGenericQuery(
+    "show cluster status",
+    "user@example.com",
+    "google",
+    {
+        callLlm: async ({ systemPrompt, contents, tools }) => {
+            // your LLM call (Gemini, GPT, Ollama, etc.)
+            return { text: "...", functionCalls: [] };
+        },
+        executeTool: async (toolName, args) => {
+            // route to your tool registry
+            return JSON.stringify({ status: "ok" });
+        },
+        // toolSchemas omitted → auto-derived from catalog workflows for the user's role
+    },
+);
 ```
 
 ## Deployment Examples
@@ -237,6 +282,29 @@ spec:
     Use OK/Warning/Critical for each service.
   allowedRoles: [developer, operator, admin]
   maxBudgetUsd: 0.15
+```
+
+### KnowledgeBase — RAG document collection
+
+```yaml
+# knowledge-bases/infra-runbooks.yaml
+apiVersion: agentrun/v1
+kind: KnowledgeBase
+metadata:
+  name: infra-runbooks
+spec:
+  description: Infrastructure runbooks and troubleshooting guides
+  source:
+    type: markdown
+    path: docs/runbooks/
+  chunking:
+    strategy: heading
+    maxTokens: 1500
+    overlap: 60
+  embedding:
+    model: titan-embed-v2
+    dimensions: 1024
+  tags: [infra-health, lambda-debug, aws]   # scoped to matching use-cases/roles
 ```
 
 ### Eval — test cases for skill routing
