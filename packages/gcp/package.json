@@ -1,6 +1,6 @@
 {
   "name": "@agentrun-ai/gcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "GCP provider implementations: Vertex AI, Firestore, Cloud Storage, Pub/Sub, Secret Manager",
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -18,7 +18,7 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@agentrun-ai/core": "workspace:*",
+    "@agentrun-ai/core": "^0.3.0",
     "@google-cloud/vertexai": "^1.9.0",
     "@google-cloud/firestore": "^7.11.0",
     "@google-cloud/storage": "^7.15.0",
