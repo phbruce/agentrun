@@ -1,6 +1,6 @@
 {
   "name": "@agentrun-ai/gcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "GCP provider implementations: Vertex AI, Firestore, Cloud Storage, Pub/Sub, Secret Manager",
   "license": "AGPL-3.0-only",
   "type": "module",
