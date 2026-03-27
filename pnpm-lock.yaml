@@ -221,8 +221,8 @@ importers:
   packages/gcp:
     dependencies:
       '@agentrun-ai/core':
-        specifier: workspace:*
-        version: link:../core
+        specifier: ^0.3.0
+        version: 0.3.1(@anthropic-ai/claude-agent-sdk@0.1.77(zod@3.25.76))(@aws-sdk/client-s3@3.1000.0)(@aws-sdk/client-ssm@3.1000.0)
       '@google-cloud/firestore':
         specifier: ^7.11.0
         version: 7.11.6
@@ -374,6 +374,21 @@ importers:
         version: 5.9.3
 
 packages:
+
+  '@agentrun-ai/core@0.3.1':
+    resolution: {integrity: sha512-2e8yEGrFduVlROBmGhru+LVkwIvtGkEk817789CxFHxdcnzWqnJWvXE4zZmDaK/YeZli5IJoVVGyyxBAJkYA7Q==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      '@anthropic-ai/claude-agent-sdk': '>=0.1.0'
+      '@aws-sdk/client-s3': '>=3.600.0'
+      '@aws-sdk/client-ssm': '>=3.600.0'
+    peerDependenciesMeta:
+      '@anthropic-ai/claude-agent-sdk':
+        optional: true
+      '@aws-sdk/client-s3':
+        optional: true
+      '@aws-sdk/client-ssm':
+        optional: true
 
   '@anthropic-ai/claude-agent-sdk@0.1.77':
     resolution: {integrity: sha512-ZEjWQtkoB2MEY6K16DWMmF+8OhywAynH0m08V265cerbZ8xPD/2Ng2jPzbbO40mPeFSsMDJboShL+a3aObP0Jg==}
@@ -2679,6 +2694,17 @@ packages:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
 snapshots:
+
+  '@agentrun-ai/core@0.3.1(@anthropic-ai/claude-agent-sdk@0.1.77(zod@3.25.76))(@aws-sdk/client-s3@3.1000.0)(@aws-sdk/client-ssm@3.1000.0)':
+    dependencies:
+      js-yaml: 4.1.1
+      jsonwebtoken: 9.0.3
+      pino: 9.14.0
+      zod: 3.25.76
+    optionalDependencies:
+      '@anthropic-ai/claude-agent-sdk': 0.1.77(zod@3.25.76)
+      '@aws-sdk/client-s3': 3.1000.0
+      '@aws-sdk/client-ssm': 3.1000.0
 
   '@anthropic-ai/claude-agent-sdk@0.1.77(zod@3.25.76)':
     dependencies:
