@@ -3,7 +3,7 @@ import type { IdentitySource, Role } from "../rbac/types.js";
 import type { FormatMode } from "../channels/types.js";
 import { getRoleConfigs, VIEWS_SECTION } from "../rbac/roleConfig.js";
 import { getDisplayName, getRoleForUser } from "../rbac/userRegistry.js";
-import { getUseCasesForRole, getWorkflowsForUseCase } from "../catalog/catalog.js";
+import { getUseCasesForRole, getWorkflowsForUseCase, getToolDefsForRole, getSkillsForRole, getKnowledgeBasesForRole } from "../catalog/catalog.js";
 import { PlatformRegistry } from "../platform/registry.js";
 
 export function buildSystemPrompt(userId: string, source: IdentitySource, formatMode: FormatMode = "markdown"): string {
@@ -16,10 +16,13 @@ export function buildSystemPrompt(userId: string, source: IdentitySource, format
     return [
         buildBaseSection(userId, displayName, role),
         buildUseCasesSection(role),
+        buildToolCatalogSection(role),
+        buildSkillsSection(role),
+        buildKnowledgeBasesSection(role),
         buildPersonaSection(role, persona),
         buildViewsSection(role),
         buildFormatSection(formatMode),
-    ].join("\n\n");
+    ].filter(Boolean).join("\n\n");
 }
 
 function buildBaseSection(userId: string, displayName: string, role: Role): string {
@@ -81,8 +84,11 @@ function buildUseCasesSection(role: Role): string {
 
     const lines = useCases.map((uc) => {
         const workflows = getWorkflowsForUseCase(uc.name);
-        const wfNames = workflows.map((wf) => wf.name).join(", ");
-        return `- *${uc.name}*: ${uc.description} (workflows: ${wfNames})`;
+        const wfLines = workflows.map((wf) => {
+            const toolNames = wf.tools.join(", ");
+            return `  → ${wf.name}: ${wf.description} (tools: ${toolNames})`;
+        }).join("\n");
+        return `- *${uc.name}*: ${uc.description}\n${wfLines}`;
     });
 
     return `## Operações Disponíveis (Use Cases)
@@ -92,8 +98,72 @@ ${lines.join("\n")}`;
 }
 
 function buildPersonaSection(role: Role, persona: string): string {
-    return `## Persona (perfil default: ${role})
-${persona}`;
+    const roleConfigs = getRoleConfigs();
+    const config = roleConfigs[role];
+    const capabilities = config?.capabilities;
+
+    let section = `## Persona (perfil default: ${role})\n${persona}`;
+    if (capabilities) {
+        section += `\nCapabilities: ${capabilities}`;
+    }
+    return section;
+}
+
+function buildToolCatalogSection(role: Role): string {
+    const toolDefs = getToolDefsForRole(role);
+    if (toolDefs.length === 0) return "";
+
+    // Group by category
+    const byCategory = new Map<string, typeof toolDefs>();
+    for (const tool of toolDefs) {
+        const cat = tool.category || "general";
+        if (!byCategory.has(cat)) byCategory.set(cat, []);
+        byCategory.get(cat)!.push(tool);
+    }
+
+    const sections: string[] = [];
+    for (const [category, tools] of byCategory) {
+        const toolLines = tools.map(t => `  - ${t.name}: ${t.description}`).join("\n");
+        sections.push(`*${category}*\n${toolLines}`);
+    }
+
+    return `## Tool Catalog\n${sections.join("\n")}`;
+}
+
+function buildSkillsSection(role: Role): string {
+    const skills = getSkillsForRole(role);
+    if (skills.length === 0) return "";
+
+    const lines = skills.map(s => {
+        const argsHint = s.args ? " <args>" : "";
+        const parts = [`- \`${s.command}${argsHint}\`: ${s.description}`];
+
+        // Include required tools so LLM knows what the skill needs
+        if (s.tools.length > 0) {
+            parts.push(`  Tools: ${s.tools.join(", ")}`);
+        }
+
+        // Extract usage example from the skill prompt (first line after "## Usage" or "```")
+        const exampleMatch = s.prompt.match(/(?:example|usage|exemplo)[:\s]*\n*```?\n?(.+?)(?:\n```|\n\n|\n##)/is);
+        if (exampleMatch) {
+            parts.push(`  Example: \`${exampleMatch[1].trim()}\``);
+        }
+
+        return parts.join("\n");
+    });
+
+    return `## Skills (Slash Commands)\nInvoke skills by typing the command. Skills with <args> require arguments.\n\n${lines.join("\n")}`;
+}
+
+function buildKnowledgeBasesSection(role: Role): string {
+    const kbs = getKnowledgeBasesForRole(role);
+    if (kbs.length === 0) return "";
+
+    const lines = kbs.map(kb => `- *${kb.name}*: ${kb.description} (tags: ${kb.tags.join(", ") || "all"})`);
+    return `## Knowledge Bases (use knowledge_search tool to retrieve content)
+The following knowledge bases are available. Do NOT guess their content — use the knowledge_search tool to retrieve specific information when the user asks about topics covered by these bases.
+
+${lines.join("\n")}`;
 }
 
 function buildViewsSection(role: Role): string {
@@ -116,20 +186,25 @@ ${formatRules}
 When listing Lambdas, ALWAYS show the readable name (Description field) alongside the hash. The technical name alone is useless to the user.
 Format: *ReadableName* (function-prefix-{hash_short}...)
 
+### Tool usage
+- ALWAYS call tools to fetch real-time data. NEVER answer from conversation history when the user asks for current state (open MRs, active sprints, issue status, etc.).
+- If the user asks the same question again, call the tool again — data may have changed.
+- Do NOT hallucinate tool results. If a tool returns an error, say so.
+
 ### Anti-slop
-- Conciso e factual. Direto ao ponto.
-- NUNCA use filler: "vamos verificar", "com certeza", "ótima pergunta"
-- NUNCA comece com saudação. Comece direto com a informação.
-- Se não encontrar: "Não encontrado." + motivo breve.
-- ZERO emojis. Nenhum. Sem exceções.
+- Concise and factual. Straight to the point.
+- NEVER use filler: "let me check", "great question", "sure"
+- NEVER start with greetings. Start with the information.
+- If not found: "Not found." + brief reason.
+- ZERO emojis. None. No exceptions.
 
-### Idioma
-- Responda em português (pt-BR)
+### Language
+- Respond in the same language the user writes in.
 
-### Segurança
-- NUNCA exponha secrets, passwords ou variáveis de ambiente sensíveis
-- READ-ONLY: nunca sugira modificar infraestrutura
-- Se ambíguo, peça clarificação brevemente`;
+### Security
+- NEVER expose secrets, passwords, or sensitive environment variables.
+- READ-ONLY: never suggest modifying infrastructure.
+- If ambiguous, ask for clarification briefly.`;
 }
 
 function buildStructureRules(mode: FormatMode): string {

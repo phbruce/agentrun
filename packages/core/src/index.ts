@@ -88,9 +88,18 @@ export type { Role, IdentitySource } from "./rbac/types.js";
 // RBAC functions
 export { getRoleForUser, getDisplayName } from "./rbac/permissions.js";
 export { getRoleConfig } from "./rbac/permissions.js";
+export { resetUserRegistry } from "./rbac/userRegistry.js";
+
+// Session
+export { saveMessage, getHistory, buildPromptWithHistory, summarizeHistory } from "./session/store.js";
+
+// Evaluator
+export { evaluateResponse, DEFAULT_CRITERIA } from "./agent/evaluator.js";
+export type { EvaluatorConfig, EvaluationResult, QualityCriteria, CriterionScore } from "./agent/evaluator.js";
 
 // Catalog functions
-export { getUseCasesForRole, getWorkflowsForUseCase, getSkillsForRole, setCatalog, getCatalog } from "./catalog/catalog.js";
+export { getUseCasesForRole, getWorkflowsForUseCase, getSkillsForRole, setCatalog, getCatalog, resetCatalog, getToolDefsForRole, getKnowledgeBasesForRole, getToolDefsForUseCase, resolveUseCaseFromQuery, matchUseCaseFromQuery } from "./catalog/catalog.js";
+export type { UseCaseMatch } from "./catalog/catalog.js";
 
 // Usage
 export { getMonthlyUsage } from "./usage/tracker.js";
@@ -139,6 +148,10 @@ export type { ProviderRegistrar } from "./platform/bootstrap.js";
 
 // Models
 export { getModels } from "./platform/models.js";
+
+// Generic agent runner (model-agnostic, uses LlmProvider interface)
+export { processGenericQuery } from "./agent/genericRunner.js";
+export type { GenericAgentConfig, FunctionDeclaration, FunctionCall } from "./agent/genericRunner.js";
 
 // Orchestrator
 export { processRequest } from "./orchestrator.js";

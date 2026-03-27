@@ -92,6 +92,14 @@ The book's structure follows a progression from "why" to "how": it begins with g
   - 5.10.3 Pack Marketplace
   - 5.10.4 Protocol Evolution (A2A + MCP)
 
+### Chapter 6 -- Harness Design Principles
+- 6.1 Compensatory Design
+- 6.2 Task Decomposition
+- 6.3 Separation of Generation from Evaluation
+- 6.4 Making Quality Gradable
+- 6.5 Context Management and Structured Handoffs
+- 6.6 Iterative Simplification
+
 ### Glossary
 - Technical terms in alphabetical order
 
@@ -3389,6 +3397,71 @@ class DirectExecutor {
 }
 ```
 
+### 4.9.5 Generic Runner (Model-Agnostic)
+
+The *Generic Runner* (`genericRunner.ts`) is a third execution mode that decouples AgentRun from the Claude Agent SDK. It implements multi-turn function calling against any LLM backend (Gemini, GPT, Claude direct API, Ollama) via two pluggable functions: `callLlm` and `executeTool`.
+
+Figure 4.9 -- Generic Runner flow.
+
+```mermaid
+flowchart TB
+    U["User query"]
+    U --> GR
+
+    subgraph GR["Generic Runner"]
+        direction TB
+        SP["Build system prompt\n(config-derived: persona,\nenvironment, resources, KBs)"]
+        SP --> TD["Auto-derive tool declarations\nfrom catalog workflows"]
+        TD --> LOOP["Multi-turn loop"]
+        LOOP --> LLM["callLlm()\n(pluggable)"]
+        LLM -->|function calls| EXEC["executeTool()\n(pluggable)"]
+        EXEC -->|results| LLM
+        LLM -->|text response| RES["Return AgentResult"]
+    end
+```
+
+**Key design decisions:**
+
+1. **System prompt derived from config.yaml** -- Uses `buildSystemPrompt` which reads `spec.roles[role].persona`, `spec.roles[role].capabilities`, and `spec.environment` (cloud, account, region, resources, repos) from the PlatformConfig. No hardcoded prompts.
+
+2. **Allowed tools derived from catalog workflows** -- When no explicit `toolSchemas` are provided, the runner calls `getToolDefsForRole(role)` which traverses the chain: `role → use-cases → workflows → tools` and builds `FunctionDeclaration[]` automatically from the catalog `ToolDef` entries.
+
+3. **KB context injection** -- Calls `getKnowledgeBasesForRole(role)` to find knowledge bases matching the role's use-case scopes/tags, and appends their descriptions to the system prompt so the LLM knows what knowledge is available.
+
+4. **RBAC filtering** -- Uses the same `getAllowedToolsForRole(role)` as the Agent Runner, ensuring consistent access control regardless of execution mode.
+
+```typescript
+// Example: using the Generic Runner with Google Vertex AI (Gemini)
+const result = await processGenericQuery(
+  "Why is Lambda X timing out?",
+  userId,
+  "slack",
+  {
+    callLlm: async ({ systemPrompt, contents, tools }) => {
+      // Call Gemini's generateContent with function declarations
+      const response = await model.generateContent({ systemInstruction: systemPrompt, contents, tools });
+      return { text: response.text, functionCalls: response.functionCalls };
+    },
+    executeTool: async (toolName, args) => {
+      // Route to MCP tool registry or custom handler
+      const handler = toolRegistry.get(toolName);
+      return JSON.stringify(await handler(args));
+    },
+    // toolSchemas omitted → auto-derived from catalog
+  },
+);
+```
+
+**When to use:** Deployments that use non-Anthropic LLM providers (Gemini via Vertex AI, GPT via Azure OpenAI, local models via Ollama), or scenarios where the Claude Agent SDK subprocess model is not viable (e.g., Cloud Functions, containers without shell access).
+
+| Metric                 | Agent Runner   | Direct Executor | Generic Runner     |
+|------------------------|----------------|-----------------|---------------------|
+| LLM calls              | 3-5            | 1               | 1-N (configurable)  |
+| LLM dependency         | Claude (SDK)   | Any (1 call)    | Any (pluggable)     |
+| Tool discovery          | Manual config  | Manifest        | Auto from catalog   |
+| KB awareness           | No             | No              | Yes (auto-injected) |
+| Adaptive reasoning     | Yes            | No              | Yes                 |
+
 ---
 
 ## 4.10 Trade-off Decisions
@@ -4926,7 +4999,15 @@ const tool = registry.get("describe_eks_cluster");
 const result = await tool.handler({ clusterName: "my-cluster" }, null);
 ```
 
-### 5.9.5 From Hardcoded to Vendor-Agnostic (PlatformConfig + PlatformRegistry)
+### 5.9.5 From Agent SDK to Generic Runner
+
+**Before**: The Agent Runner depended on `@anthropic-ai/claude-agent-sdk`, which spawns a Claude Code subprocess. This tied the agentic loop to Anthropic's models and required shell access for the subprocess -- unavailable in some runtimes (GCP Cloud Functions, restricted containers).
+
+**Problem**: Organizations using Vertex AI (Gemini) or Azure OpenAI (GPT) could not use the Agent Runner. The GCP deployment path required a model-agnostic alternative.
+
+**After**: The *Generic Runner* (`genericRunner.ts`) implements the same multi-turn function calling loop but accepts `callLlm` and `executeTool` as pluggable functions. The system prompt is derived from `PlatformConfig` roles (persona, capabilities, environment, resources). Tools are auto-derived from the catalog chain (`role → use-cases → workflows → tools`), and knowledge base context is injected from catalog `KnowledgeBaseDef` entries matching the role's scopes. The Generic Runner coexists with the Agent Runner -- the Orchestrator or consumer chooses which to use based on deployment context.
+
+### 5.9.6 From Hardcoded to Vendor-Agnostic (PlatformConfig + PlatformRegistry)
 
 **Before**: AgentRun was coupled to AWS in 8 points of the core -- Bedrock for LLM, DynamoDB for sessions and usage, S3 for manifests, SQS for queues, STS for credentials, Secrets Manager for bootstrap. Roles, users, and environment configurations were hardcoded in TypeScript files. Each deployment required code changes.
 
@@ -5405,7 +5486,39 @@ Hierarchical chunking (1500/300 tokens, 60 overlap) produces chunks at two
 levels: parent level captures broad context (entire sections), while child
 level captures specific details (paragraphs).
 
-### 5.11.4 OSS Fallback
+### 5.11.4 Configurable KB Loading via Catalog
+
+Knowledge bases are declared as `KnowledgeBaseDef` manifests in the catalog. The `getKnowledgeBasesForRole(role)` function filters KBs based on tag matching against the role's use-case names and scopes:
+
+```typescript
+// KnowledgeBaseDef manifest (YAML)
+apiVersion: agentrun/v1
+kind: KnowledgeBase
+metadata:
+  name: runbook-infra
+spec:
+  description: "Infrastructure runbooks and troubleshooting guides"
+  source:
+    type: markdown
+    path: docs/runbooks/
+  chunking:
+    strategy: heading
+    maxTokens: 1500
+    overlap: 60
+  embedding:
+    model: titan-embed-v2
+    dimensions: 1024
+  tags: ["infra-health", "lambda-debug", "aws"]  # matches use-case names/scopes
+```
+
+**Filtering logic:**
+- KBs with no tags or a `"*"` tag are available to all roles
+- KBs whose tags include any of the role's use-case names or scopes are included
+- The Generic Runner automatically appends matching KB descriptions to the system prompt
+
+This allows organizations to scope documentation access by role: operators see infrastructure runbooks, developers see API docs, viewers see only health summaries.
+
+### 5.11.5 OSS Fallback
 
 Users who do not use AWS can continue using the custom path (`PgVectorStore`
 + `BedrockEmbeddingProvider`). The `search-knowledge-base` tool automatically
@@ -5419,7 +5532,7 @@ detects:
 
 ## Summary
 
-AgentRun's system design is governed by four central architectural decisions:
+AgentRun's system design is governed by five central architectural decisions:
 
 1. Ingestion/processing separation via message queue: enables meeting chat platform timeouts (e.g., Slack's 3-second limit) without sacrificing the time needed for AI processing (5-30 seconds).
 
@@ -5427,7 +5540,9 @@ AgentRun's system design is governed by four central architectural decisions:
 
 3. Two-stage catalog loading: the *core bundle* ensures the platform always works (even without S3), while remote packs enable extensibility without deployment.
 
-4. *Dual execution model* (Agent + Direct): deterministic skills execute 3-5x faster via Direct Executor, while open-ended queries can still use the Agent SDK's full loop.
+4. *Triple execution model* (Agent + Direct + Generic): deterministic skills execute 3-5x faster via Direct Executor, open-ended queries use the Agent SDK's full loop, and the Generic Runner enables model-agnostic deployments with auto-derived tools and KB context from the catalog.
+
+5. *Config-driven system prompts*: persona, capabilities, environment, resources, and knowledge base context are derived from `PlatformConfig` and the catalog -- no hardcoded prompts.
 
 These decisions were not made a priori -- they emerged from solving real production problems: chat platform timeouts (Slack, Google Chat) motivated SQS, token cost motivated scope filtering, skill latency motivated the Direct Executor, and the need for extensibility without deployment motivated the pack system with cache and fallback.
 
@@ -5435,6 +5550,134 @@ The platform's extensibility is completed with three recent additions: the *Agen
 
 The epilogue below synthesizes the themes of all five chapters and offers a practical guide for teams that wish to build something similar.
 
+
+---
+
+
+# CHAPTER 6 -- HARNESS DESIGN PRINCIPLES
+
+AgentRun's architecture follows the principles described in Anthropic's engineering blog post *[Harness Design for Long-Running Application Development](https://www.anthropic.com/engineering/harness-design-long-running-apps)*. While the blog post focuses on long-running code generation tasks (6+ hours), the compensatory design philosophy applies directly to AgentRun's short-running query execution (1-10 seconds per response).
+
+The core insight: **every component in a harness encodes an assumption about what the model can't do on its own**. As models improve, those assumptions should be stress-tested and components removed when they become unnecessary.
+
+## 6.1 Compensatory Design
+
+AgentRun is not a wrapper around an LLM. It is a compensatory structure that provides what the base model cannot reliably do alone:
+
+| Model limitation | Harness compensation |
+|---|---|
+| Models cannot reliably classify queries into the right domain | Two-layer routing: fast keyword scoring + LLM classification fallback |
+| Models hallucinate tool names and parameters | RBAC-filtered tool catalog with explicit declarations |
+| Models lose coherence with large contexts | Session history truncation + automatic summarization |
+| Models cannot evaluate their own output objectively | Independent evaluator with explicit quality criteria |
+| Models call the same tool repeatedly when results are ambiguous | Duplicate call detection with cached results |
+| Models struggle with multi-step workflows | Use-case routing narrows the tool set to the relevant domain |
+
+## 6.2 Task Decomposition
+
+Queries are decomposed through the catalog hierarchy:
+
+```
+User query
+  -> Use-case matching (keyword + LLM classification)
+    -> Workflow selection (use-case -> workflows)
+      -> Tool filtering (workflow -> tools)
+        -> Function declarations passed to LLM
+```
+
+This ensures the LLM receives only the tools relevant to the matched domain, reducing hallucination and improving accuracy. A query about Jira sprints only sees Jira tools, not BigQuery or GitLab tools.
+
+## 6.3 Separation of Generation from Evaluation
+
+The blog post identifies a critical anti-pattern: *"When asked to evaluate work they've produced, agents tend to respond by confidently praising the work -- even when, to a human observer, the quality is obviously mediocre."*
+
+AgentRun implements an optional response evaluator (`evaluator.ts`) that runs as a separate LLM call after the generator produces a response. The evaluator:
+
+1. Receives the original query, the response, and the tool results
+2. Scores the response against explicit quality criteria
+3. If the score is below the threshold, feeds improvement suggestions back to the generator
+4. Returns the quality score in `AgentResult` for telemetry and display
+
+The evaluator is opt-in via `GenericAgentConfig.evaluator`:
+
+```typescript
+const result = await processGenericQuery(query, userId, source, {
+    callLlm: myLlmAdapter,
+    executeTool: myToolExecutor,
+    evaluator: {
+        enabled: true,
+        passThreshold: 0.6,
+        // Custom criteria or use DEFAULT_CRITERIA
+    },
+});
+
+console.log(result.qualityScore); // 0-1
+```
+
+## 6.4 Making Quality Gradable
+
+The evaluator uses four default criteria with explicit weights:
+
+| Criterion | Weight | What it measures |
+|---|---|---|
+| `factual_accuracy` | 0.4 | Response is supported by tool results. No hallucinated data. |
+| `completeness` | 0.3 | Response fully answers the user's question. |
+| `conciseness` | 0.2 | No filler, no unnecessary repetition. |
+| `actionability` | 0.1 | User can act on the response (links, identifiers, next steps). |
+
+Deployments can override criteria for domain-specific quality:
+
+```typescript
+evaluator: {
+    enabled: true,
+    criteria: [
+        { name: "sql_correctness", weight: 0.5, description: "SQL syntax is valid and efficient" },
+        { name: "security", weight: 0.3, description: "No credential exposure in response" },
+        { name: "clarity", weight: 0.2, description: "Non-technical stakeholder can understand" },
+    ],
+},
+```
+
+## 6.5 Context Management and Structured Handoffs
+
+AgentRun implements two complementary strategies:
+
+### Structured handoffs (P5)
+
+Conversation history includes tool usage metadata:
+
+```
+User: what's the current sprint?
+Assistant: [tools: jira_get_agile_boards, jira_get_sprint_issues] Sprint 6 is active with 21 issues.
+User: show me PROJ-2039
+Assistant: [tools: jira_get_issue] PROJ-2039: Fix TypeError in compute_costs...
+```
+
+This gives the LLM context about what tools were already called, preventing redundant calls and enabling informed follow-up queries.
+
+### Context summarization (P4)
+
+When conversation history exceeds 40,000 characters, `summarizeHistory()` calls the LLM to create a structured summary:
+
+- Questions asked and answers given
+- Tools called and key results
+- Decisions made
+- Unresolved topics
+
+The summary replaces all previous messages, providing a clean context window with structured handoff -- what the blog post calls "clearing the context window entirely and starting a fresh agent, combined with a structured handoff."
+
+## 6.6 Iterative Simplification
+
+The blog post states: *"every component in a harness encodes an assumption about what the model can't do on its own, and those assumptions are worth stress testing."*
+
+AgentRun's `GenericAgentConfig` is designed for iterative simplification:
+
+- **Swap the LLM**: Change `callLlm` from Gemini to Claude to GPT without touching the harness
+- **Remove the evaluator**: Set `evaluator.enabled = false` if the model is reliable enough
+- **Simplify routing**: Set `useLlmRouting = false` if keyword matching is sufficient
+- **Remove tool schemas**: Omit `toolSchemas` to auto-derive from the catalog
+
+When a new model version makes a component unnecessary, remove it. The harness should shrink, not accumulate complexity.
 
 ---
 

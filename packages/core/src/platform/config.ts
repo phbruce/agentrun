@@ -48,7 +48,7 @@ const PlatformConfigSchema = z.object({
             session: ProviderConfigSchema,
             usage: ProviderConfigSchema,
             manifests: ProviderConfigSchema,
-            queue: ProviderConfigSchema,
+            queue: ProviderConfigSchema.optional(),
             secrets: ProviderConfigSchema,
             embeddings: ProviderConfigSchema.optional(),
             vectorStore: ProviderConfigSchema.optional(),
@@ -116,21 +116,37 @@ export async function loadPlatformConfig(): Promise<PlatformConfig | null> {
                 }
             }
 
-            // Otherwise, load directly from S3 (first boot — manifests provider not yet registered)
-            const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+            // Otherwise, load directly from object storage (first boot — manifests provider not yet registered)
             const bucket = process.env.AGENTRUN_MANIFESTS_BUCKET ?? "agentrun-manifests";
-            const s3 = new S3Client({});
-            const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: s3Key }));
-            const body = await res.Body?.transformToString();
+            const cloud = process.env.AGENTRUN_CLOUD ?? (process.env.GCP_PROJECT_ID ? "gcp" : "aws");
+
+            let body: string | undefined;
+
+            if (cloud === "gcp") {
+                // GCS: use @google-cloud/storage (optional peer dependency)
+                // @ts-ignore — optional dependency, only available on GCP
+                const { Storage } = await import("@google-cloud/storage");
+                const storage = new Storage();
+                const [content] = await storage.bucket(bucket).file(s3Key).download();
+                body = content.toString("utf-8");
+                logger.info({ name: s3Key, bucket }, "Platform config loaded from GCS (direct)");
+            } else {
+                // AWS S3: use @aws-sdk/client-s3
+                const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+                const s3 = new S3Client({});
+                const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: s3Key }));
+                body = await res.Body?.transformToString();
+                logger.info({ name: s3Key, bucket }, "Platform config loaded from S3 (direct)");
+            }
+
             if (body) {
                 const parsed = yaml.load(body);
                 const config = PlatformConfigSchema.parse(parsed) as PlatformConfig;
-                logger.info({ name: config.metadata.name, s3Key }, "Platform config loaded from S3 (direct)");
                 return config;
             }
         } catch (err: any) {
-            logger.error({ error: err.message, s3Key }, "Failed to load platform config from S3");
-            throw new Error(`Failed to load platform config from S3 key ${s3Key}: ${err.message}`);
+            logger.error({ error: err.message, s3Key }, "Failed to load platform config from object storage");
+            throw new Error(`Failed to load platform config from ${s3Key}: ${err.message}`);
         }
     }
 
