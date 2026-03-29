@@ -411,6 +411,46 @@ spec:
     maxBudgetPerCaseUsd: 0.15
 ```
 
+## Using Evals
+
+Evals validate that skills and workflows behave correctly by testing:
+
+1. **Trigger routing** — Does this query trigger the skill? (or not)
+2. **Execution quality** — Were the right tools called? Did the response meet quality criteria?
+
+### Running Evals
+
+```bash
+# CLI (validate skill routing and execution)
+pnpm --filter @agentrun-ai/cli exec agentrun eval evals/health-check.yaml
+
+# Programmatic (in your agent harness)
+import { runEval } from "@agentrun-ai/core";
+
+const results = await runEval({
+  evalPath: "evals/health-check.yaml",
+  skillCatalog: yourSkillCatalog,
+  callLlm: yourLlmProvider,
+  executeTool: yourToolExecutor,
+});
+
+console.log(`Passed: ${results.passedCases}/${results.totalCases}`);
+```
+
+### Eval Structure
+
+**Trigger Cases** — Test skill routing logic:
+- `shouldTrigger: true` — This query MUST activate the skill
+- `shouldTrigger: false` — This query MUST NOT activate the skill
+
+**Execution Cases** — Test tool calls and output quality:
+- `expectations` — List tools that should/shouldn't be called
+- `assertions` — Custom checks on the response (regex, token count, cost)
+
+### Cost Control
+
+The `maxBudgetPerCaseUsd` field limits spend per evaluation run. If an LLM call exceeds this, it's rejected and logged as a failure — useful for catching regressions where the agent starts making expensive queries.
+
 ## License
 
 [GNU Affero General Public License v3.0](LICENSE) — See [NOTICE](NOTICE) for copyright.
