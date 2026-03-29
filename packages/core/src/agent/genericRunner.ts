@@ -18,6 +18,9 @@ import type { IdentitySource } from "../rbac/types.js";
 import type { AgentResult } from "./agentRunner.js";
 import { getToolDefsForRole, getToolDefsForUseCase, matchUseCaseFromQuery, getUseCasesForRole, getCatalog, getKnowledgeBasesForRole } from "../catalog/catalog.js";
 import type { UseCaseDef } from "../catalog/types.js";
+import { selectModel } from "./modelRouter.js";
+import type { ModelSelection } from "./modelRouter.js";
+import { PlatformRegistry } from "../platform/registry.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,19 +53,29 @@ export interface GenericAgentConfig {
     useLlmRouting?: boolean;
     /** Response evaluator configuration (opt-in, default: disabled) */
     evaluator?: import("./evaluator.js").EvaluatorConfig;
-    /** Tool executor function */
-    executeTool: (toolName: string, args: Record<string, unknown>) => Promise<string>;
-    /** LLM function calling implementation */
+    /** Tool executor function — receives optional userToken for per-user auth */
+    executeTool: (toolName: string, args: Record<string, unknown>, userToken?: string) => Promise<string>;
+    /** LLM function calling implementation. modelId is the provider-specific model ID selected by the router. */
     callLlm: (options: {
         systemPrompt: string;
         contents: Array<{ role: string; parts: unknown[] }>;
         tools: FunctionDeclaration[];
+        /** Model ID selected by the router (e.g. "gemini-2.0-flash"). Consumer should use this to instantiate the right model. */
+        modelId?: string;
+        /** User ID making the request (for per-user token resolution in gateway calls) */
+        userId?: string;
     }) => Promise<{
         text?: string;
         functionCalls?: FunctionCall[];
         inputTokens?: number;
         outputTokens?: number;
     }>;
+    /**
+     * Optional: resolve a per-user token for a tool category.
+     * Returns the access token string if the user has connected, null otherwise.
+     * The runner passes this to executeTool so it can use per-user credentials.
+     */
+    resolveUserToken?: (userId: string, toolName: string) => Promise<string | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,6 +139,26 @@ export async function processGenericQuery(
     const maxRounds = config.maxRounds ?? 5;
 
     const role = getRoleForUser(userId, source);
+
+    // -----------------------------------------------------------------------
+    // Model selection: pick optimal model based on query complexity + role
+    // -----------------------------------------------------------------------
+    let modelSelection: ModelSelection | undefined;
+    try {
+        const registry = PlatformRegistry.instance();
+        if (registry.isConfigured) {
+            const platformModels = (registry.config.spec as any).models as Record<string, import("../platform/types.js").ModelDef> | undefined;
+            if (platformModels && Object.keys(platformModels).length > 0) {
+                // Get allowed models from role definition in platform config
+                const roleDef = registry.config.spec.roles?.[role];
+                const allowedModels = roleDef?.models;
+                modelSelection = selectModel(userQuery, platformModels, allowedModels);
+                logger.info({ model: modelSelection.name, reason: modelSelection.reason }, "Model routed");
+            }
+        }
+    } catch {
+        // No config or no models defined — caller's callLlm uses its default model
+    }
 
     // Build system prompt from config (persona, environment, resources, catalog)
     let systemPrompt = config.systemPromptOverride ?? buildSystemPrompt(userId, source);
@@ -259,6 +292,8 @@ export async function processGenericQuery(
             systemPrompt,
             contents,
             tools: declarations,
+            modelId: modelSelection?.model.modelId,
+            userId,
         });
 
         inputTokens += result.inputTokens ?? 0;
@@ -299,6 +334,7 @@ export async function processGenericQuery(
                 outputTokens,
                 qualityScore,
                 evaluationCriteria,
+                modelUsed: modelSelection?.name,
             };
         }
 
@@ -329,7 +365,11 @@ export async function processGenericQuery(
             }
 
             try {
-                const toolResult = await config.executeTool(toolName, fc.args);
+                // Resolve per-user token if available
+                const userToken = config.resolveUserToken
+                    ? await config.resolveUserToken(userId, toolName)
+                    : undefined;
+                const toolResult = await config.executeTool(toolName, fc.args, userToken ?? undefined);
                 const truncated = toolResult.length > 8000
                     ? toolResult.slice(0, 8000) + "\n...(truncated)"
                     : toolResult;
@@ -355,5 +395,6 @@ export async function processGenericQuery(
         durationMs: Date.now() - startTime,
         inputTokens,
         outputTokens,
+        modelUsed: modelSelection?.name,
     };
 }

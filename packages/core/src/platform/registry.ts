@@ -11,6 +11,7 @@ import type {
     EmbeddingProvider,
     VectorStore,
     KnowledgeBaseProvider,
+    UserTokenStore,
 } from "./types.js";
 
 export interface PlatformProviders {
@@ -24,6 +25,7 @@ export interface PlatformProviders {
     embeddings?: EmbeddingProvider;
     vectorStore?: VectorStore;
     knowledgeBase?: KnowledgeBaseProvider;
+    userTokens?: UserTokenStore;
 }
 
 let _instance: PlatformRegistry | null = null;
@@ -106,5 +108,9 @@ export class PlatformRegistry {
 
     get knowledgeBase(): KnowledgeBaseProvider | null {
         return this.providers?.knowledgeBase ?? null;
+    }
+
+    get userTokens(): UserTokenStore | null {
+        return this.providers?.userTokens ?? null;
     }
 }

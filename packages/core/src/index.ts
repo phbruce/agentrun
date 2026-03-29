@@ -43,6 +43,11 @@ export type {
     DocumentIngester,
     KnowledgeBaseProvider,
     KnowledgeBaseSearchResult,
+    UserTokenStore,
+    UserToken,
+    AuthProviderConfig,
+    ModelDef,
+    ModelCapability,
 } from "./platform/types.js";
 
 // Platform registry
@@ -152,6 +157,14 @@ export { getModels } from "./platform/models.js";
 // Generic agent runner (model-agnostic, uses LlmProvider interface)
 export { processGenericQuery } from "./agent/genericRunner.js";
 export type { GenericAgentConfig, FunctionDeclaration, FunctionCall } from "./agent/genericRunner.js";
+
+// Model router
+export { selectModel, classifyComplexity, getModelsForRole } from "./agent/modelRouter.js";
+export type { ModelSelection, QueryComplexity } from "./agent/modelRouter.js";
+
+// OpenAI-compatible LLM caller
+export { createOpenAICaller } from "./agent/openaiCaller.js";
+export type { OpenAICallerConfig } from "./agent/openaiCaller.js";
 
 // Orchestrator
 export { processRequest } from "./orchestrator.js";

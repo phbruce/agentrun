@@ -129,6 +129,55 @@ export interface DocumentIngester {
     chunk(source: string, content: string): DocumentChunk[];
 }
 
+// ── User Token Store (per-user OAuth / PAT credentials) ──
+
+export interface UserToken {
+    /** Access token or PAT value */
+    accessToken: string;
+    /** Refresh token (OAuth2 only) */
+    refreshToken?: string;
+    /** OpenID Connect ID token (JWT proving user identity, for GenAI Gateway etc.) */
+    idToken?: string;
+    /** Token expiration timestamp (ms since epoch) */
+    expiresAt?: number;
+    /** Token type: bearer (OAuth2), basic, or pat */
+    tokenType: "bearer" | "basic" | "pat";
+    /** OAuth2 scopes granted */
+    scopes?: string[];
+    /** When the token was saved */
+    savedAt: number;
+}
+
+export interface AuthProviderConfig {
+    /** Authentication method: OAuth2 redirect flow or manual PAT entry */
+    type: "oauth2" | "pat";
+    /** OAuth2 authorization URL */
+    authUrl?: string;
+    /** OAuth2 token exchange URL */
+    tokenUrl?: string;
+    /** Secret name for OAuth2 client ID */
+    clientIdSecret?: string;
+    /** Secret name for OAuth2 client secret */
+    clientSecretSecret?: string;
+    /** OAuth2 scopes to request */
+    scopes?: string[];
+    /** Human-readable instructions for PAT creation */
+    instructions?: string;
+    /** Tool categories that use this provider (e.g. ["jira", "confluence"]) */
+    services: string[];
+}
+
+export interface UserTokenStore {
+    /** Get a user's token for a given auth provider */
+    getToken(userId: string, provider: string): Promise<UserToken | null>;
+    /** Save a user's token for a given auth provider */
+    saveToken(userId: string, provider: string, token: UserToken): Promise<void>;
+    /** Delete a user's token for a given auth provider */
+    deleteToken(userId: string, provider: string): Promise<void>;
+    /** List which auth providers a user has connected */
+    listProviders(userId: string): Promise<string[]>;
+}
+
 // ── Platform Config ──
 
 export interface ProviderConfig {
@@ -147,6 +196,7 @@ export interface ProviderConfigs {
     embeddings?: ProviderConfig;
     vectorStore?: ProviderConfig;
     knowledgeBase?: ProviderConfig;
+    userTokens?: ProviderConfig;
 }
 
 export interface IdentitySourceConfig {
@@ -160,11 +210,32 @@ export interface IdentityConfig {
     sources: IdentitySourceConfig[];
 }
 
+// ── Model Definitions ──
+
+export type ModelCapability = "fast" | "balanced" | "advanced";
+
+export interface ModelDef {
+    /** LLM provider type (e.g. "vertex-ai", "bedrock", "openai") */
+    provider: string;
+    /** Model ID as expected by the provider (e.g. "gemini-2.0-flash", "claude-sonnet-4") */
+    modelId: string;
+    /** Capability tier: fast (cheap/quick), balanced (general), advanced (complex reasoning) */
+    capability: ModelCapability;
+    /** Cost per 1k input tokens in USD (for budget tracking) */
+    inputCostPer1kTokens: number;
+    /** Cost per 1k output tokens in USD */
+    outputCostPer1kTokens: number;
+    /** Max output tokens supported */
+    maxOutputTokens?: number;
+}
+
 export interface RoleDef {
     actions: string[];
     useCases: string[];
     persona: string;
     capabilities?: string;
+    /** Allowed model names for this role (keys from spec.models). If omitted, all models are available. */
+    models?: string[];
     maxTurns: number;
     maxBudgetUsd: number;
 }
@@ -228,5 +299,8 @@ export interface PlatformConfig {
         users: UserEntry[];
         environment: EnvironmentConfig;
         protocols?: ProtocolsConfig;
+        authProviders?: Record<string, AuthProviderConfig>;
+        /** Available models with cost and capability metadata. Keys are logical names used in role.models. */
+        models?: Record<string, ModelDef>;
     };
 }

@@ -33,3 +33,4 @@ export { markdownToRichTextBlocks } from "./richTextSerializer.js";
 // Template renderer
 export { renderGreeting, renderResponse, renderError } from "./templateRenderer.js";
 export type { RenderContext } from "./templateRenderer.js";
+

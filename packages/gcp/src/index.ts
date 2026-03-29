@@ -13,6 +13,7 @@ import { GcpIamCredentialProvider } from "./iamCredentials.js";
 import { FirestoreVectorStore } from "./firestoreVector.js";
 import { CloudSqlVectorStore } from "./cloudSqlVector.js";
 import { VertexAiKBProvider } from "./vertexKB.js";
+import { FirestoreUserTokenStore } from "./firestoreUserTokens.js";
 
 /**
  * Register all GCP provider implementations into the PlatformRegistry.
@@ -71,6 +72,18 @@ export function registerGcpProviders(config: PlatformConfig): void {
         )
         : undefined;
 
+    // User token store (optional — only if configured)
+    // Tokens are encrypted at rest using Cloud KMS when kmsKeyName is provided.
+    // The key name can come from config or the AGENTRUN_KMS_KEY env var.
+    const userTokensConfig = providers.userTokens;
+    const userTokensProvider = userTokensConfig
+        ? new FirestoreUserTokenStore(
+            (userTokensConfig.config.collectionName as string) ?? "agentrun-user-tokens",
+            (userTokensConfig.config.databaseId as string) ?? undefined,
+            (userTokensConfig.config.kmsKeyName as string) ?? process.env.AGENTRUN_KMS_KEY ?? undefined,
+        )
+        : undefined;
+
     registry.register({
         llm: new VertexAiLlmProvider(projectId, llmLocation),
         credentials: new GcpIamCredentialProvider(projectId, credPattern),
@@ -82,6 +95,7 @@ export function registerGcpProviders(config: PlatformConfig): void {
         embeddings: embeddingsProvider,
         vectorStore: vectorStoreProvider,
         knowledgeBase: knowledgeBaseProvider,
+        userTokens: userTokensProvider,
     });
 
     registry.setConfig(config);
@@ -101,3 +115,5 @@ export { GcpIamCredentialProvider } from "./iamCredentials.js";
 export { FirestoreVectorStore } from "./firestoreVector.js";
 export { CloudSqlVectorStore } from "./cloudSqlVector.js";
 export { VertexAiKBProvider } from "./vertexKB.js";
+export { FirestoreUserTokenStore } from "./firestoreUserTokens.js";
+export { getIdentityToken } from "./identityToken.js";

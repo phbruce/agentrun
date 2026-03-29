@@ -19,6 +19,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "test": "echo 'no tests'",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "peerDependencies": {
