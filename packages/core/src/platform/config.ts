@@ -9,11 +9,21 @@ const ProviderConfigSchema = z.object({
     config: z.record(z.unknown()).default({}),
 });
 
+const ModelDefSchema = z.object({
+    provider: z.string(),
+    modelId: z.string(),
+    capability: z.enum(["fast", "balanced", "advanced"]),
+    inputCostPer1kTokens: z.number().min(0),
+    outputCostPer1kTokens: z.number().min(0),
+    maxOutputTokens: z.number().int().optional(),
+});
+
 const RoleDefSchema = z.object({
     actions: z.array(z.string()),
     useCases: z.array(z.string()),
     persona: z.string(),
     capabilities: z.string().optional(),
+    models: z.array(z.string()).optional(),
     maxTurns: z.number().int().min(1).max(50),
     maxBudgetUsd: z.number().min(0).max(10),
 });
@@ -37,6 +47,17 @@ const RepoEntrySchema = z.object({
     description: z.string(),
 });
 
+const AuthProviderConfigSchema = z.object({
+    type: z.enum(["oauth2", "pat"]),
+    authUrl: z.string().optional(),
+    tokenUrl: z.string().optional(),
+    clientIdSecret: z.string().optional(),
+    clientSecretSecret: z.string().optional(),
+    scopes: z.array(z.string()).optional(),
+    instructions: z.string().optional(),
+    services: z.array(z.string()),
+});
+
 const PlatformConfigSchema = z.object({
     apiVersion: z.string().default("agentrun/v1"),
     kind: z.string().default("PlatformConfig"),
@@ -53,6 +74,7 @@ const PlatformConfigSchema = z.object({
             embeddings: ProviderConfigSchema.optional(),
             vectorStore: ProviderConfigSchema.optional(),
             knowledgeBase: ProviderConfigSchema.optional(),
+            userTokens: ProviderConfigSchema.optional(),
         }),
         identity: z.object({
             sources: z.array(z.object({
@@ -73,6 +95,8 @@ const PlatformConfigSchema = z.object({
             resources: z.array(ResourceEntrySchema),
             repos: z.array(RepoEntrySchema),
         }),
+        authProviders: z.record(AuthProviderConfigSchema).optional(),
+        models: z.record(ModelDefSchema).optional(),
     }),
 });
 

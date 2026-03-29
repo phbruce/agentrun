@@ -1,6 +1,22 @@
+<div align="center">
+
 # AgentRun
 
 Multi-channel, manifest-driven, RBAC-gated AI Agent Runtime.
+
+<p>
+  <a href="https://github.com/phbruce/agentrun/actions/workflows/test.yml?branch=main">
+    <img src="https://img.shields.io/github/actions/workflow/status/phbruce/agentrun/test.yml?branch=main&style=for-the-badge" alt="Test status">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-AGPL--3.0--only-blue.svg?style=for-the-badge" alt="AGPL-3.0 License">
+  </a>
+  <a href="https://npmjs.org/package/@agentrun-ai/core">
+    <img src="https://img.shields.io/npm/v/@agentrun-ai/core?style=for-the-badge" alt="npm version">
+  </a>
+</p>
+
+</div>
 
 AgentRun is a self-hosted runtime that turns declarative YAML manifests into a fully operational AI agent — with tool calling, role-based access, session memory, and multi-channel delivery. Think of it as *containerd for AI agents*: you define what the agent can do, AgentRun handles the rest.
 
@@ -74,7 +90,8 @@ Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. T
 
 | Package | Description |
 |---------|-------------|
-| [`@agentrun-ai/core`](packages/core) | Orchestrator, agent runner, catalog, RBAC, platform registry, RAG |
+| [`@agentrun-ai/core`](packages/core) | **v0.4.0** — Orchestrator, model router, generic runner, catalog, RBAC, platform registry |
+| [`@agentrun-ai/gcp`](packages/gcp) | **v0.4.0** — GCP providers: Vertex AI, Firestore, Cloud Storage, Pub/Sub, KMS token encryption |
 | [`@agentrun-ai/aws`](packages/aws) | Bedrock LLM/embeddings, DynamoDB, S3, SQS, STS, Secrets Manager |
 | [`@agentrun-ai/channel-slack`](packages/channel-slack) | Slack adapter, Block Kit formatting, identity resolution |
 | [`@agentrun-ai/channel-gchat`](packages/channel-gchat) | Google Chat adapter, Cards V2 formatting, Workspace Add-on support |
@@ -83,7 +100,6 @@ Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. T
 | [`@agentrun-ai/tools-gcp`](packages/tools-gcp) | GCP infrastructure tools (GKE, Cloud SQL, Cloud Functions, Cloud Logging, Pub/Sub) |
 | [`@agentrun-ai/tools-github`](packages/tools-github) | GitHub tools (PRs, commits, reviews) |
 | [`@agentrun-ai/tools-jira`](packages/tools-jira) | Jira tools (issues, comments, transitions) |
-| [`@agentrun-ai/gcp`](packages/gcp) | GCP providers: Vertex AI, Firestore, Cloud Storage, Pub/Sub, Secret Manager |
 | [`@agentrun-ai/cli`](packages/cli) | CLI: validate manifests, sync packs, ingest docs for RAG |
 
 ### Dependency graph
@@ -134,6 +150,64 @@ await processRequest(adapter, {
     threadTs: "1234567890.123456",
 });
 ```
+
+### Model Router (v0.4.0)
+
+Automatically select optimal LLM models based on query complexity and role permissions:
+
+```typescript
+import { selectModel, classifyComplexity } from "@agentrun-ai/core";
+
+// Zero-cost complexity classification
+const complexity = classifyComplexity("analyze performance bottlenecks");
+// → "complex"
+
+// RBAC-gated model selection (pick cheapest model meeting requirement)
+const models = {
+    fast: { capability: "fast", inputCostPer1kTokens: 0.001, ... },
+    pro: { capability: "advanced", inputCostPer1kTokens: 0.01, ... },
+};
+
+const selection = selectModel("analyze performance...", models, ["fast", "pro"]);
+// → { name: "pro", reason: "complex query → advanced model (pro)" }
+```
+
+**Complexity Tiers:**
+- `simple`: "list prs", "show status" → fast/cheap models
+- `moderate`: multi-step synthesis
+- `complex`: "design architecture", "analyze impact" → advanced models
+
+See [`examples/model-router-demo`](examples/model-router-demo) for full example.
+
+### OpenAI-Compatible Gateway (v0.4.0)
+
+Use any OpenAI-compatible LLM endpoint (OpenAI, Ollama, self-hosted gateway, Vertex AI):
+
+```typescript
+import { createOpenAICaller } from "@agentrun-ai/core";
+
+const caller = createOpenAICaller({
+    baseUrl: "https://api.openai.com",  // or http://localhost:11434 for Ollama
+    defaultModel: "gpt-4o",
+    resolveToken: async (userId) => await tokenStore.get(userId, "openai"),
+});
+
+const result = await processGenericQuery(
+    "show cluster status",
+    "U12345",
+    "slack",
+    { callLlm: caller, executeTool: myTools }
+);
+```
+
+Works with:
+- OpenAI API
+- Anthropic Vertex AI
+- Local LLM servers (Ollama, vLLM, LM Studio)
+- Self-hosted gateways
+- Any OpenAI-compatible endpoint
+
+See [`examples/openai-gateway-demo`](examples/openai-gateway-demo) for full example.
 
 ### Model-agnostic (Generic Runner)
 

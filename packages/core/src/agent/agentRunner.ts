@@ -36,6 +36,8 @@ export interface AgentResult {
     qualityScore?: number;
     /** Per-criterion scores from evaluator */
     evaluationCriteria?: Array<{ name: string; score: number }>;
+    /** Model used for the main response (selected by model router) */
+    modelUsed?: string;
 }
 
 export async function processInfraQuery(userQuery: string, userId: string, source: IdentitySource, model?: string, isDm: boolean = false): Promise<AgentResult> {

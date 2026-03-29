@@ -1,0 +1,18 @@
+{
+  "name": "agentrun-example-openai-gateway",
+  "version": "0.4.0",
+  "description": "Demonstrate AgentRun with OpenAI-compatible LLM gateway (works with Ollama, OpenAI API, etc.)",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "@agentrun-ai/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

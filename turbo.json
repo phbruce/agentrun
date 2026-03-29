@@ -8,6 +8,17 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "test": {
+      "outputs": ["coverage/**"],
+      "cache": false
+    },
+    "test:watch": {
+      "cache": false
+    },
+    "test:coverage": {
+      "outputs": ["coverage/**"],
+      "cache": false
+    },
     "lint": {},
     "clean": {
       "cache": false
