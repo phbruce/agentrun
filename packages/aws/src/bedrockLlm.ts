@@ -2,7 +2,7 @@
 
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { logger } from "@agentrun-ai/core";
-import type { LlmProvider, LlmResponse, ToolResultInput } from "@agentrun-ai/core";
+import type { LlmProvider, LlmResponse, ToolResultInput, ContentBlock } from "@agentrun-ai/core";
 
 export class BedrockLlmProvider implements LlmProvider {
     private client: BedrockRuntimeClient;
@@ -52,6 +52,53 @@ export class BedrockLlmProvider implements LlmProvider {
         const outputTokens = parsed.usage?.output_tokens ?? 0;
 
         logger.info({ inputTokens, outputTokens }, "Bedrock summarize complete");
+
+        return { answer, inputTokens, outputTokens };
+    }
+
+    async vision(
+        systemPrompt: string,
+        content: ContentBlock[],
+        model: string,
+    ): Promise<LlmResponse> {
+        const messages = [{
+            role: "user",
+            content: content.map(block => {
+                if (block.type === "text") return { type: "text", text: block.text };
+                if (block.type === "image") return { type: "image", source: block.source };
+                return null;
+            }).filter(Boolean),
+        }];
+
+        const body = JSON.stringify({
+            anthropic_version: "bedrock-2023-05-31",
+            max_tokens: 2048,
+            system: systemPrompt,
+            messages,
+        });
+
+        logger.info({ model, contentBlocks: content.length }, "Bedrock vision starting");
+
+        const response = await this.client.send(
+            new InvokeModelCommand({
+                modelId: model,
+                contentType: "application/json",
+                accept: "application/json",
+                body: new TextEncoder().encode(body),
+            }),
+        );
+
+        const parsed = JSON.parse(new TextDecoder().decode(response.body));
+
+        const answer = parsed.content
+            ?.filter((c: any) => c.type === "text")
+            .map((c: any) => c.text)
+            .join("") ?? "";
+
+        const inputTokens = parsed.usage?.input_tokens ?? 0;
+        const outputTokens = parsed.usage?.output_tokens ?? 0;
+
+        logger.info({ inputTokens, outputTokens }, "Bedrock vision complete");
 
         return { answer, inputTokens, outputTokens };
     }

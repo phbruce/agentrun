@@ -12,11 +12,27 @@ export interface LlmResponse {
     outputTokens: number;
 }
 
+export interface ContentBlock {
+    type: "text" | "image";
+    text?: string;
+    source?: {
+        type: "base64";
+        media_type: string;
+        data: string;
+    };
+}
+
 export interface LlmProvider {
     summarize(
         systemPrompt: string,
         userPrompt: string,
         toolResults: ToolResultInput[],
+        model: string,
+    ): Promise<LlmResponse>;
+
+    vision?(
+        systemPrompt: string,
+        content: ContentBlock[],
         model: string,
     ): Promise<LlmResponse>;
 }
