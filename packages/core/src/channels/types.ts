@@ -4,6 +4,12 @@ import type { AgentResult } from "../agent/agentRunner.js";
 
 export type FormatMode = "slack-mrkdwn" | "markdown" | "gchat-card" | "plain";
 
+export interface ImageAttachment {
+    url: string;
+    mimeType: string;
+    name?: string;
+}
+
 export interface ChannelContext {
     requestId: string;
     sessionId: string;
@@ -13,6 +19,7 @@ export interface ChannelContext {
     isPrivate: boolean;
     responseUrl?: string;
     meta: Record<string, string>;
+    images?: ImageAttachment[];
 }
 
 export interface ChannelAdapter {

@@ -24,6 +24,7 @@ export type {
 
 // Provider interfaces
 export type {
+    ContentBlock,
     LlmProvider,
     LlmResponse,
     ToolResultInput,
@@ -61,6 +62,7 @@ export type {
     FormatMode,
     ChannelContext,
     ChannelAdapter,
+    ImageAttachment,
 } from "./channels/types.js";
 
 // Agent types
