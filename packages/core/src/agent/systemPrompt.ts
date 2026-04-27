@@ -6,7 +6,12 @@ import { getDisplayName, getRoleForUser } from "../rbac/userRegistry.js";
 import { getUseCasesForRole, getWorkflowsForUseCase, getToolDefsForRole, getSkillsForRole, getKnowledgeBasesForRole } from "../catalog/catalog.js";
 import { PlatformRegistry } from "../platform/registry.js";
 
-export function buildSystemPrompt(userId: string, source: IdentitySource, formatMode: FormatMode = "markdown"): string {
+export function buildSystemPrompt(
+    userId: string,
+    source: IdentitySource,
+    formatMode: FormatMode = "markdown",
+    options?: { resourcesOverride?: Array<{type: string; name: string; description: string; defaultParameter?: string}> }
+): string {
     const role = getRoleForUser(userId, source);
     const displayName = getDisplayName(userId, source);
     const roleConfigs = getRoleConfigs();
@@ -14,18 +19,24 @@ export function buildSystemPrompt(userId: string, source: IdentitySource, format
     const persona = config?.persona ?? "Respostas concisas e diretas.";
 
     return [
-        buildBaseSection(userId, displayName, role),
+        buildBaseSection(userId, displayName, role, options),
         buildUseCasesSection(role),
         buildToolCatalogSection(role),
         buildSkillsSection(role),
         buildKnowledgeBasesSection(role),
+        buildToolDefaultsSection(role, options),
         buildPersonaSection(role, persona),
         buildViewsSection(role),
         buildFormatSection(formatMode),
     ].filter(Boolean).join("\n\n");
 }
 
-function buildBaseSection(userId: string, displayName: string, role: Role): string {
+function buildBaseSection(
+    userId: string,
+    displayName: string,
+    role: Role,
+    options?: { resourcesOverride?: Array<{type: string; name: string; description: string; defaultParameter?: string}> }
+): string {
     const registry = PlatformRegistry.instance();
 
     if (!registry.isConfigured) {
@@ -35,8 +46,11 @@ function buildBaseSection(userId: string, displayName: string, role: Role): stri
 
     const env = registry.config.spec.environment;
 
+    // Use override if provided, otherwise use config resources
+    const resources = options?.resourcesOverride ?? env.resources;
+
     // Build resources section
-    const resourceLines = env.resources.map((r) =>
+    const resourceLines = resources.map((r) =>
         `- *${r.type}*: ${r.name} (${r.description})`,
     ).join("\n");
 
@@ -95,6 +109,35 @@ function buildUseCasesSection(role: Role): string {
 As operações que você pode realizar para este usuário:
 
 ${lines.join("\n")}`;
+}
+
+function buildToolDefaultsSection(
+    role: Role,
+    options?: { resourcesOverride?: Array<{type: string; name: string; description: string; defaultParameter?: string}> }
+): string {
+    const registry = PlatformRegistry.instance();
+    if (!registry.isConfigured) return "";
+
+    // Use override if provided, otherwise use config resources
+    const resources = options?.resourcesOverride ?? registry.config.spec.environment.resources;
+
+    const instructions: string[] = [];
+
+    for (const resource of resources) {
+        if (!resource.defaultParameter) continue;
+
+        // Generate instruction: "When calling jira-* tools, ALWAYS use project_key="PEMENG""
+        instructions.push(
+            `- When calling ${resource.type}-* tools, ALWAYS use ${resource.defaultParameter}="${resource.name}"`
+        );
+    }
+
+    if (instructions.length === 0) return "";
+
+    return `## Tool Parameter Defaults
+These default values are automatically resolved from your Key Resources. Use them when calling tools to avoid asking the user for configuration details.
+
+${instructions.join("\n")}`;
 }
 
 function buildPersonaSection(role: Role, persona: string): string {

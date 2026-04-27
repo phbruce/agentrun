@@ -268,6 +268,8 @@ export interface ResourceEntry {
     type: string;
     name: string;
     description: string;
+    /** Optional: parameter name to auto-fill when calling tools of this type (e.g. "project_key" for jira) */
+    defaultParameter?: string;
 }
 
 export interface RepoEntry {
