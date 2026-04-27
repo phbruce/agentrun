@@ -49,6 +49,10 @@ export interface GenericAgentConfig {
     toolSchemas?: Record<string, object>;
     /** Custom system prompt override (if not provided, uses buildSystemPrompt) */
     systemPromptOverride?: string;
+    /** Append text to system prompt after buildSystemPrompt (ignored if systemPromptOverride is set) */
+    systemPromptAppend?: string;
+    /** Override resources in system prompt (user/team context). Merged with pack defaults. */
+    resourcesOverride?: Array<{type: string; name: string; description: string; defaultParameter?: string}>;
     /** Use LLM to classify queries when keyword matching is ambiguous (default: true) */
     useLlmRouting?: boolean;
     /** Response evaluator configuration (opt-in, default: disabled) */
@@ -161,7 +165,17 @@ export async function processGenericQuery(
     }
 
     // Build system prompt from config (persona, environment, resources, catalog)
-    let systemPrompt = config.systemPromptOverride ?? buildSystemPrompt(userId, source);
+    let systemPrompt = config.systemPromptOverride ?? buildSystemPrompt(
+        userId,
+        source,
+        undefined,
+        { resourcesOverride: config.resourcesOverride }
+    );
+
+    // Append custom instructions if provided
+    if (config.systemPromptAppend && !config.systemPromptOverride) {
+        systemPrompt += `\n\n${config.systemPromptAppend}`;
+    }
 
     // -----------------------------------------------------------------------
     // Two-layer routing: keywords (fast) → LLM classification (smart)
