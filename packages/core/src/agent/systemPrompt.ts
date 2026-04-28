@@ -126,7 +126,7 @@ function buildToolDefaultsSection(
     for (const resource of resources) {
         if (!resource.defaultParameter) continue;
 
-        // Generate instruction: "When calling jira-* tools, ALWAYS use project_key="PEMENG""
+        // Generate instruction e.g.: "When calling gitlab-* tools, ALWAYS use project_id="my-project""
         instructions.push(
             `- When calling ${resource.type}-* tools, ALWAYS use ${resource.defaultParameter}="${resource.name}"`
         );

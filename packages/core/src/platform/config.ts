@@ -40,6 +40,7 @@ const ResourceEntrySchema = z.object({
     type: z.string(),
     name: z.string(),
     description: z.string(),
+    defaultParameter: z.string().optional(),
 });
 
 const RepoEntrySchema = z.object({

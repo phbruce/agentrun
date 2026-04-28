@@ -105,6 +105,15 @@ const result = await processGenericQuery(
                 { name: "completeness", weight: 0.3 },
             ],
         },
+        resourcesOverride: [
+            {
+                type: "project",
+                name: "my-team-project",
+                description: "Team's main project",
+                defaultParameter: "project_id"
+            }
+        ],
+        systemPromptAppend: "Additional context: this user is part of the platform team."
     }
 );
 ```
@@ -136,6 +145,44 @@ Works with:
 - Self-hosted gateways
 - Local LLM servers (Ollama, vLLM)
 - Any OpenAI-compatible endpoint
+
+### Per-User/Team Context Override (v0.4.0)
+
+Override resource context per user or team without modifying platform config:
+
+```typescript
+const config: GenericAgentConfig = {
+    // ... other config
+    resourcesOverride: [
+        {
+            type: "gitlab",
+            name: "team-alpha/service",
+            description: "Team Alpha's microservice",
+            defaultParameter: "project_id"
+        },
+        {
+            type: "jira",
+            name: "TEAM",
+            description: "Team's Jira project",
+            defaultParameter: "project_key"
+        }
+    ],
+    systemPromptAppend: "Additional context: user is contractor, read-only access."
+};
+```
+
+**Use cases:**
+- Multi-tenant SaaS: each customer sees their own resources
+- Team-specific tooling: different defaults per squad
+- Role-based context: append instructions based on permissions
+- Dynamic resource routing: resolve resources from user metadata
+
+The LLM receives instructions like:
+```
+## Tool Parameter Defaults
+- When calling gitlab-* tools, ALWAYS use project_id="team-alpha/service"
+- When calling jira-* tools, ALWAYS use project_key="TEAM"
+```
 
 ## Architecture
 
