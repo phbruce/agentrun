@@ -23,10 +23,18 @@ export class FirestoreUserTokenStore implements UserTokenStore {
     private kmsKeyName: string | undefined;
     private kmsClient: any; // Lazy-loaded KeyManagementServiceClient
 
-    constructor(collectionName = "agentrun-user-tokens", databaseId?: string, kmsKeyName?: string) {
-        this.firestore = databaseId
-            ? new Firestore({ databaseId })
-            : new Firestore();
+    constructor(
+        collectionName = "agentrun-user-tokens",
+        databaseId?: string,
+        kmsKeyName?: string,
+        projectId?: string
+    ) {
+        // IMPORTANT: Always pass projectId to avoid using wrong credentials
+        const resolvedProjectId = projectId || process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
+        this.firestore = new Firestore({
+            projectId: resolvedProjectId,
+            databaseId: databaseId || undefined
+        });
         this.collection = collectionName;
         this.kmsKeyName = kmsKeyName;
     }

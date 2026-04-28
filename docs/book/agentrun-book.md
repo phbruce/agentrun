@@ -3948,7 +3948,7 @@ The main benefit: when `packTypes.ts` evolves (new required field, new tool type
 
 ## 4.14 Eval Framework
 
-AgentRun includes a built-in evaluation framework that validates skill routing accuracy without requiring cloud infrastructure or LLM invocations. The framework operates in two phases: *trigger eval* (deterministic, instant) and *execution eval* (requires AWS runtime, deferred).
+AgentRun includes a built-in evaluation framework that validates skill routing accuracy without requiring cloud infrastructure or LLM invocations. The framework operates in two phases: *trigger eval* (deterministic, instant) and *execution eval* (pluggable via `ExecutionContext`).
 
 ### 4.14.1 Query Classifier
 
@@ -4062,9 +4062,37 @@ agentrun eval .claude/infrabot --mode trigger
 4 evals, 4 passed, 0 failed (threshold: 80%)
 ```
 
-**Phase 2: Execution Eval (requires runtime)**
+**Phase 2: Execution Eval (pluggable runtime)**
 
-Execution cases invoke the actual skill against live infrastructure, applying expectations against the response. This phase requires AWS credentials and Bedrock access. It is currently deferred in the CLI (`"skipped -- execution eval requires AWS runtime"`), designed to run in CI or Lambda contexts where the runtime is available.
+Execution cases invoke the actual skill against live infrastructure, applying expectations against the response. Projects provide an `ExecutionContext` implementation that bridges the eval runner to their agent runtime:
+
+```typescript
+interface ExecutionContext {
+  executeQuery: (prompt: string, userId: string) => Promise<AgentExecutionResult>;
+  userId?: string; // default: "eval-user"
+}
+
+interface AgentExecutionResult {
+  answer: string;
+  toolsUsed: string[];
+  skillMatched?: string;
+  useCaseMatched?: string;
+  durationMs: number;
+}
+```
+
+Supported expectation types:
+
+| Type | Description |
+|------|-------------|
+| `contains` | Response includes expected text (case-insensitive) |
+| `not_contains` | Response does not include forbidden text |
+| `tool_called` | Specific tool was invoked during execution |
+| `tool_not_called` | Specific tool was not invoked |
+| `matches_regex` | Response matches a regex pattern |
+| `llm_judge` | Response is substantial and error-free (simplified heuristic) |
+
+If no `ExecutionContext` is provided, execution cases are skipped gracefully. This allows trigger-only evaluation during development and full execution evaluation in CI or staging environments.
 
 ### 4.14.5 Design Rationale
 
