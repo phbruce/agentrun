@@ -14,6 +14,31 @@ import type {
 } from "./evalOutput.js";
 
 // ---------------------------------------------------------------------------
+// Execution context for agent execution
+// ---------------------------------------------------------------------------
+
+export interface AgentExecutionResult {
+    answer: string;
+    toolsUsed: string[];
+    skillMatched?: string;
+    useCaseMatched?: string;
+    durationMs: number;
+}
+
+export interface ExecutionContext {
+    /**
+     * Execute agent query and return result.
+     * Projects must implement this to provide their agent runtime.
+     */
+    executeQuery: (prompt: string, userId: string) => Promise<AgentExecutionResult>;
+
+    /**
+     * User ID for execution (default: "eval-user")
+     */
+    userId?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Manifest loader
 // ---------------------------------------------------------------------------
 
@@ -140,26 +165,133 @@ function runTriggerCases(
 }
 
 // ---------------------------------------------------------------------------
-// Execution evaluation (placeholder — needs runtime)
+// Execution evaluation (real agent execution)
 // ---------------------------------------------------------------------------
 
-function runExecutionCases(
+async function runExecutionCases(
     evalDef: EvalDef,
+    context?: ExecutionContext,
     onProgress?: (msg: string) => void,
-): ExecutionCaseResult[] {
+): Promise<ExecutionCaseResult[]> {
     const results: ExecutionCaseResult[] = [];
 
+    if (!context?.executeQuery) {
+        // No execution context provided - skip execution cases
+        for (const ec of evalDef.executionCases) {
+            onProgress?.(`  execution [${ec.id}]: skipped (no execution context provided)`);
+
+            const expectations: ExpectationResult[] = ec.expectations.map((exp) => ({
+                type: exp.type,
+                value: exp.value,
+                pass: false,
+                detail: "skipped — execution eval requires ExecutionContext",
+            }));
+
+            results.push({ id: ec.id, prompt: ec.prompt, expectations, score: 0, pass: false });
+        }
+        return results;
+    }
+
+    const userId = context.userId || "eval-user";
+
     for (const ec of evalDef.executionCases) {
-        onProgress?.(`  execution [${ec.id}]: skipped (needs AWS runtime)`);
+        onProgress?.(`  execution [${ec.id}]: "${ec.prompt}"`);
 
-        const expectations: ExpectationResult[] = ec.expectations.map((exp) => ({
-            type: exp.type,
-            value: exp.value,
-            pass: false,
-            detail: "skipped — execution eval requires AWS runtime",
-        }));
+        try {
+            const result = await context.executeQuery(ec.prompt, userId);
 
-        results.push({ id: ec.id, prompt: ec.prompt, expectations, score: 0, pass: false });
+            const expectations: ExpectationResult[] = [];
+
+            for (const exp of ec.expectations) {
+                let pass = false;
+                let detail: string | undefined;
+
+                switch (exp.type) {
+                    case "contains":
+                        pass = result.answer.toLowerCase().includes(exp.value.toLowerCase());
+                        detail = pass ? undefined : `output does not contain "${exp.value}"`;
+                        break;
+
+                    case "not_contains":
+                        pass = !result.answer.toLowerCase().includes(exp.value.toLowerCase());
+                        detail = pass ? undefined : `output contains forbidden "${exp.value}"`;
+                        break;
+
+                    case "tool_called":
+                        pass = result.toolsUsed.some(tool => tool === exp.value);
+                        detail = pass ? undefined : `tool "${exp.value}" was not called (called: ${result.toolsUsed.join(", ")})`;
+                        break;
+
+                    case "tool_not_called":
+                        pass = !result.toolsUsed.some(tool => tool === exp.value);
+                        detail = pass ? undefined : `tool "${exp.value}" was called but should not have been`;
+                        break;
+
+                    case "matches_regex":
+                        try {
+                            const regex = new RegExp(exp.value);
+                            pass = regex.test(result.answer);
+                            detail = pass ? undefined : `output does not match regex /${exp.value}/`;
+                        } catch (err) {
+                            pass = false;
+                            detail = `invalid regex: ${(err as Error).message}`;
+                        }
+                        break;
+
+                    case "llm_judge":
+                        // Simplified LLM judge: check response is substantial and not an error
+                        const isSubstantial = result.answer.length > 50;
+                        const noErrors = !result.answer.toLowerCase().includes("error") &&
+                                       !result.answer.toLowerCase().includes("not available") &&
+                                       !result.answer.toLowerCase().includes("não disponível");
+                        pass = isSubstantial && noErrors;
+                        detail = pass ? undefined : `response too short or contains error`;
+                        break;
+
+                    default:
+                        pass = false;
+                        detail = `unknown expectation type: ${exp.type}`;
+                }
+
+                expectations.push({
+                    type: exp.type,
+                    value: exp.value,
+                    pass,
+                    detail,
+                });
+            }
+
+            const allPassed = expectations.every(e => e.pass);
+            const score = expectations.filter(e => e.pass).length / expectations.length;
+
+            results.push({
+                id: ec.id,
+                prompt: ec.prompt,
+                expectations,
+                score,
+                pass: allPassed,
+            });
+
+            onProgress?.(`    → ${allPassed ? "PASS" : "FAIL"} (${(score * 100).toFixed(0)}%)`);
+
+        } catch (err) {
+            const expectations: ExpectationResult[] = ec.expectations.map((exp) => ({
+                type: exp.type,
+                value: exp.value,
+                pass: false,
+                detail: `execution error: ${(err as Error).message}`,
+            }));
+
+            results.push({
+                id: ec.id,
+                prompt: ec.prompt,
+                expectations,
+                score: 0,
+                pass: false,
+            });
+
+            onProgress?.(`    → ERROR: ${(err as Error).message}`);
+        }
     }
 
     return results;
@@ -177,10 +309,15 @@ export interface EvalOptions {
     filter?: string;
     threshold: number;
     onProgress?: (msg: string) => void;
+    /**
+     * Execution context for running execution cases.
+     * If not provided, execution cases will be skipped.
+     */
+    executionContext?: ExecutionContext;
 }
 
 export async function runEvals(options: EvalOptions): Promise<EvalSummary> {
-    const { dir, mode, filter, threshold, onProgress } = options;
+    const { dir, mode, filter, threshold, onProgress, executionContext } = options;
 
     const evalDefs = loadEvalManifests(dir, filter);
     if (evalDefs.length === 0) {
@@ -214,7 +351,7 @@ export async function runEvals(options: EvalOptions): Promise<EvalSummary> {
         }
 
         if ((mode === "execution" || mode === "all") && evalDef.executionCases.length > 0) {
-            executionResults = runExecutionCases(evalDef, onProgress);
+            executionResults = await runExecutionCases(evalDef, executionContext, onProgress);
         }
 
         const triggerPassRate =

@@ -81,6 +81,7 @@ export function registerGcpProviders(config: PlatformConfig): void {
             (userTokensConfig.config.collectionName as string) ?? "agentrun-user-tokens",
             (userTokensConfig.config.databaseId as string) ?? undefined,
             (userTokensConfig.config.kmsKeyName as string) ?? process.env.AGENTRUN_KMS_KEY ?? undefined,
+            (userTokensConfig.config.projectId as string) ?? undefined,
         )
         : undefined;
 

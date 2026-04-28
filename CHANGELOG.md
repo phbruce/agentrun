@@ -5,6 +5,26 @@ All notable changes to AgentRun will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+#### Eval Execution Runner (`@agentrun-ai/cli`)
+- `ExecutionContext` interface for pluggable agent execution in eval runner
+- `AgentExecutionResult` type for standardized execution results
+- Real execution cases implementation with expectation validators:
+  - `contains` / `not_contains` — text content matching
+  - `tool_called` / `tool_not_called` — tool invocation verification
+  - `matches_regex` — regex pattern matching
+  - `llm_judge` — simplified response quality check
+- Programmatic re-exports: `runEvals`, `formatEvalHuman`, `formatEvalJson`, `ExecutionContext`, `AgentExecutionResult`
+- Execution cases no longer require AWS runtime — any project can provide its own `ExecutionContext`
+
+#### Firestore User Token Store (`@agentrun-ai/gcp`)
+- `projectId` parameter in `FirestoreUserTokenStore` constructor
+- Explicit project resolution: constructor param → `GCP_PROJECT_ID` env → `GOOGLE_CLOUD_PROJECT` env
+- Fixes initialization in multi-project GCP setups where ADC defaults to wrong project
+
 ## [0.4.0] - 2026-03-29
 
 ### Added

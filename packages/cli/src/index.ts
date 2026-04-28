@@ -7,8 +7,12 @@ import { listPacks, getPackInfo, publishPack } from "./registry.js";
 import { ingestDocument } from "./ingest.js";
 import { formatHuman, formatJson } from "./output.js";
 import { runEvals } from "./eval.js";
-import type { EvalMode } from "./eval.js";
+import type { EvalMode, ExecutionContext, AgentExecutionResult, EvalOptions } from "./eval.js";
 import { formatEvalHuman, formatEvalJson } from "./evalOutput.js";
+
+// Re-export for programmatic usage
+export { runEvals, formatEvalHuman, formatEvalJson };
+export type { EvalMode, ExecutionContext, AgentExecutionResult, EvalOptions };
 
 // ---------------------------------------------------------------------------
 // Argument parsing
