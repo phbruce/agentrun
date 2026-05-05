@@ -55,7 +55,7 @@ export type {
 export { PlatformRegistry } from "./platform/registry.js";
 
 // Platform config
-export { loadPlatformConfig, buildDefaultConfig } from "./platform/config.js";
+export { loadPlatformConfig, buildDefaultConfig, getSpecField } from "./platform/config.js";
 
 // Channel types
 export type {
