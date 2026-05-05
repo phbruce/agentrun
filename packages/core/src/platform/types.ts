@@ -310,6 +310,11 @@ export interface PlatformConfig {
     apiVersion: string;
     kind: string;
     metadata: { name: string };
+    /**
+     * `spec` carries the runtime-known fields plus an open index for custom
+     * fields preserved by Zod `.passthrough()`. Read custom fields via
+     * `getSpecField<T>(name, schema)` for type-safe access.
+     */
     spec: {
         providers: ProviderConfigs;
         identity: IdentityConfig;
@@ -320,5 +325,7 @@ export interface PlatformConfig {
         authProviders?: Record<string, AuthProviderConfig>;
         /** Available models with cost and capability metadata. Keys are logical names used in role.models. */
         models?: Record<string, ModelDef>;
+        /** Custom fields not modeled by the SDK; use getSpecField() to read with a schema. */
+        [key: string]: unknown;
     };
 }

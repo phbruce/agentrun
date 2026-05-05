@@ -2,6 +2,7 @@
 import { z } from "zod";
 import yaml from "js-yaml";
 import { logger } from "../logger.js";
+import { PlatformRegistry } from "./registry.js";
 import type { PlatformConfig } from "./types.js";
 
 const ProviderConfigSchema = z.object({
@@ -63,6 +64,10 @@ const PlatformConfigSchema = z.object({
     apiVersion: z.string().default("agentrun/v1"),
     kind: z.string().default("PlatformConfig"),
     metadata: z.object({ name: z.string() }),
+    // .passthrough() preserves spec.* keys not declared here (e.g. teams,
+    // deck, packs, custom multi-tenancy fields) so consumers can read them
+    // via getSpecField<T>() with their own Zod schemas. Without this, Zod's
+    // default behavior silently strips unknown keys.
     spec: z.object({
         providers: z.object({
             llm: ProviderConfigSchema,
@@ -98,7 +103,7 @@ const PlatformConfigSchema = z.object({
         }),
         authProviders: z.record(AuthProviderConfigSchema).optional(),
         models: z.record(ModelDefSchema).optional(),
-    }),
+    }).passthrough(),
 });
 
 /**
@@ -227,4 +232,35 @@ export function buildDefaultConfig(): PlatformConfig {
             },
         },
     };
+}
+
+/**
+ * Read a custom field from `spec.*` that is not modeled by PlatformConfigSchema.
+ *
+ * The base schema declares only the fields the runtime needs (providers,
+ * identity, roles, users, environment, authProviders, models). With
+ * `.passthrough()` on `spec`, additional keys are preserved during parsing
+ * but typed as `unknown`. Use this helper to validate and unwrap them with
+ * the consumer's own Zod schema.
+ *
+ * Returns `undefined` when the field is absent or fails validation.
+ *
+ * @example
+ *   const TeamsSchema = z.array(z.object({ name: z.string() }));
+ *   const teams = getSpecField("teams", TeamsSchema) ?? [];
+ */
+export function getSpecField<T>(name: string, schema: z.ZodType<T>): T | undefined {
+    const config = PlatformRegistry.instance().config;
+    if (!config) return undefined;
+    const value = (config.spec as unknown as Record<string, unknown>)[name];
+    if (value === undefined) return undefined;
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) {
+        logger.warn(
+            { name, error: parsed.error.message },
+            "getSpecField: value present but failed schema validation",
+        );
+        return undefined;
+    }
+    return parsed.data;
 }
