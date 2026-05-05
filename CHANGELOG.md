@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-05-05
+
+### Fixed
+
+#### Bootstrap singleton isolation (`@agentrun-ai/core`)
+- `bootstrapPlatform()` now always calls `PlatformRegistry.instance().setConfig(config)` before delegating to the provider registrar
+- Previously, when a registrar (e.g. `registerGcpProviders`) was set, `setConfig` was only called inside the registrar — which runs from its own copy of `@agentrun-ai/core` in nested `node_modules`. The calling module's singleton never had `config` set, causing `PlatformRegistry: config not loaded` errors at request time in apps with diamond dependency copies of core
+
 ## [0.5.1] - 2026-05-05
 
 ### Added
