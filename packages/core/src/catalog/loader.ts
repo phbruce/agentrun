@@ -34,6 +34,7 @@ export function loadManifestsFromRaw(
             http: doc.spec.http,
             lambda: doc.spec.lambda,
             secrets: doc.spec.secrets,
+            inputSchema: doc.spec.inputSchema,
         };
         if (tools.has(t.name)) {
             throw new Error(`Duplicate tool name: ${t.name} (file: ${file})`);

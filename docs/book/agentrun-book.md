@@ -61,6 +61,7 @@ The book's structure follows a progression from "why" to "how": it begins with g
 - 4.3 Manifest-Driven Development
 - 4.4 Multi-Client Architecture
 - 4.5 Pack System Engineering
+  - 4.5.5 Direct HTTP Tool Invocation
 - 4.6 Resilience Patterns
 - 4.7 Bridge Engineering (Go)
 - 4.8 API Design -- MCP JSON-RPC 2.0
@@ -2932,14 +2933,11 @@ The `type` field in the tool manifest determines the nature of the capability an
 | `mcp-server` | Tool served by remote MCP server         | JSON-RPC via HTTP        |
 | `skill`      | Skill with embedded prompt               | Direct Executor / Agent  |
 | `api-rest`   | Tool that calls REST API directly        | HTTP with schema mapping |
-| `aws-sdk`    | AWS capability (access registration)     | Via workflow steps       |
-| `http`       | HTTP capability (access registration)    | Via workflow steps       |
-| `lambda`     | Lambda capability (access registration)  | Via workflow steps       |
+| `aws-sdk`    | AWS capability (access registration)             | Via workflow steps              |
+| `http`       | HTTP tool -- capability or direct invocation     | Via workflow steps OR direct LLM call |
+| `lambda`     | Lambda capability (access registration)          | Via workflow steps              |
 
-The last three types (`aws-sdk`, `http`, `lambda`) are *capability registrations*:
-the tool manifest defines only **how to access** the service (service name, baseUrl,
-functionName), without business logic. The execution logic (action, input,
-outputTransform) lives in the Workflow's `steps`:
+`aws-sdk` and `lambda` are always *capability registrations*: the YAML defines only **how to access** the service, without business logic. Execution lives in Workflow `steps`:
 
 ```
 Tool YAML                          Workflow YAML
@@ -2957,6 +2955,106 @@ Workflows with `steps` are auto-registered as invocable MCP tools via
 `hydrateWorkflowAsTools()`. The *Workflow Engine* executes steps sequentially,
 resolving the tool in the catalog, interpolating `{{ }}`, executing the corresponding
 SDK/HTTP/Lambda, applying JMESPath, and chaining results between steps.
+
+The `http` type supports an additional mode: **direct invocation**. When `method`, `path`, and `inputSchema` are declared in the tool YAML, the LLM can call the tool directly -- no Workflow needed. See section 4.5.5 for details.
+
+---
+
+### 4.5.5 Direct HTTP Tool Invocation
+
+The `http` tool type supports two modes:
+
+| Mode                  | When to use                                      | Required fields              |
+|-----------------------|--------------------------------------------------|------------------------------|
+| Capability registration | Multi-step orchestration via Workflow steps    | `baseUrl`, `auth`            |
+| Direct invocation     | Single HTTP call per LLM tool call               | + `method`, `path`, `inputSchema` |
+
+**Direct invocation** is the right choice when each operation maps to exactly one HTTP call, with no chaining or output transformation between steps. The tool is called directly by the LLM; the platform resolves auth, injects team-scoped parameters, and makes the HTTP request.
+
+#### YAML fields for direct invocation
+
+```yaml
+apiVersion: agentrun/v1
+kind: Tool
+metadata:
+  name: jira-search
+spec:
+  type: http
+  description: "Search Jira issues using JQL query"
+  category: jira
+  http:
+    baseUrl: "{{ secrets.jira-url }}"
+    auth:
+      type: bearer
+      secret: jira-token
+    method: GET
+    path: "/rest/api/2/search?jql={jql}&maxResults={maxResults|15}"
+    # transformFile: ./transforms/jira-search.js   # optional body transform
+    headers:
+      X-Custom-Header: "value"
+  inputSchema:
+    type: object
+    properties:
+      jql:
+        type: string
+        description: "JQL query"
+      maxResults:
+        type: number
+        description: "Max results (default: 15)"
+```
+
+| Field           | Description                                                              |
+|-----------------|--------------------------------------------------------------------------|
+| `method`        | HTTP method: `GET`, `POST`, `PUT`, `DELETE`                             |
+| `path`          | URL path template. Placeholders: `{arg}`, `{arg\|default}`, `{arg:raw}` |
+| `usesParams`    | Args consumed in the body (not the path) — excluded from URL encoding   |
+| `headers`       | Extra HTTP headers merged with auth headers                              |
+| `transformFile` | Path to a JS file (relative to the tool YAML) that builds the request body |
+| `ssl`           | Set `false` to disable TLS verification (internal services only)        |
+| `inputSchema`   | JSON Schema exposed to the LLM for this tool                            |
+
+#### Path template placeholders
+
+| Syntax          | Behavior                                              |
+|-----------------|-------------------------------------------------------|
+| `{arg}`         | URL-encoded value of `arg`                           |
+| `{arg\|default}` | URL-encoded value, or `default` if `arg` is absent  |
+| `{arg:raw}`     | Raw (unencoded) value of `arg`                       |
+
+#### Body transforms via `transformFile`
+
+For `POST`/`PUT` tools that require a structured request body, a transform file maps tool arguments to the request body. This avoids a central TypeScript registry — each team co-locates the transform with the tool YAML:
+
+```
+packs/shared/tools/
+  jira-create-issue.yaml
+  transforms/
+    jira-issue.js      ← export default (args) => ({ fields: { ... } })
+```
+
+```javascript
+// transforms/jira-issue.js
+export default function (args) {
+    return {
+        fields: {
+            project: { key: args.project_key },
+            summary: args.summary,
+            issuetype: { name: args.issue_type },
+        },
+    };
+}
+```
+
+The runtime loads the transform via `loadTransformer` from `@agentrun-ai/core`:
+
+```typescript
+import { loadTransformer, applyTransform } from "@agentrun-ai/core";
+
+const transform = await loadTransformer(route.transformFile, toolsDir);
+const body = await applyTransform(transform, args);
+```
+
+`loadTransformer` accepts any JS file whose default export is a function `(data: unknown) => unknown | Promise<unknown>`. The same mechanism works for workflow step output transforms when a JMESPath expression is insufficient.
 
 ---
 
@@ -5124,11 +5222,19 @@ flowchart LR
 
 ### 5.10.2 New Tool Domains
 
-Adding a new tool domain (for example, AWS cost monitoring or Datadog integration) requires:
+Adding a new tool domain (for example, AWS cost monitoring or Datadog integration) requires choosing the right invocation pattern:
+
+**Option A — Workflow steps** (for multi-step orchestration, AWS SDK, Lambda):
 
 1. **Register the capability** via Tool YAML (type `aws-sdk`, `http`, or `lambda`)
 2. **Create workflow with steps** that orchestrates the execution logic
 3. **Optionally, add a scope** for filtering in the MCP Server
+
+**Option B — Direct HTTP invocation** (for single-call REST APIs):
+
+1. **Write a Tool YAML** with `type: http`, adding `method`, `path`, and `inputSchema`
+2. **Optionally add a `transformFile`** co-located with the YAML for complex body building
+3. No Workflow needed — the LLM calls the tool directly
 
 With the *Workflow Step Engine*, it is no longer necessary to implement TypeScript handlers
 for new domains. Declarative tools register the capability; workflows define
@@ -5778,7 +5884,7 @@ Recurring technical terms in this book, organized in alphabetical order.
 | *StreamableHTTP* | Future MCP transport that replaces SSE with bidirectional streaming. Enables partial responses and server-push notifications during execution of long workflows. |
 | *SessionStore* | Platform interface for conversation history persistence. Implementations: `DynamoSessionStore` (AWS DynamoDB), `FirestoreSessionStore` (GCP Firestore). |
 | SQS | *Simple Queue Service*. AWS queue service used to decouple ingestion (Command Handler) from processing (Process Handler). |
-| *tool* | Atomic capability registered in the catalog. Native types (`mcp-server`) have TypeScript handlers; declarative types (`aws-sdk`, `http`, `lambda`) register only access config and are invoked via workflow steps. |
+| *tool* | Atomic capability registered in the catalog. Native types (`mcp-server`) have TypeScript handlers. `aws-sdk` and `lambda` are capability registrations invoked via workflow steps. `http` tools support two modes: capability registration (via workflow steps) or direct invocation (LLM calls the tool directly when `method`, `path`, and `inputSchema` are declared). |
 | *UsageStore* | Platform interface for tracking token consumption per user. Implementations: `DynamoUsageStore` (AWS DynamoDB), `FirestoreUsageStore` (GCP Firestore). |
 | *use-case* | User intent mapped by keywords to a set of workflows. The `classifyQuery()` function (see section 4.14.1) determines the *ResponseCategory*, which the Orchestrator maps to the appropriate use-case. |
 | *warm-start* | Handler invocation that reuses an already-initialized runtime (e.g., Lambda warm start), with HTTP clients and in-memory caches preserved. |
