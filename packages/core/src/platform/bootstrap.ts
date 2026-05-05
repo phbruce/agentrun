@@ -35,12 +35,16 @@ export async function bootstrapPlatform(): Promise<void> {
 
     const config = await loadPlatformConfig() ?? buildDefaultConfig();
 
+    // Always set config on this module's PlatformRegistry instance first.
+    // The registrar (e.g. registerGcpProviders) may run from a different copy of
+    // @agentrun-ai/core in nested node_modules and will set config on its own
+    // singleton — but callers that import from this copy need it set here too.
+    PlatformRegistry.instance().setConfig(config);
+
     if (_registrar) {
         _registrar(config);
     } else {
         logger.warn("No provider registrar set. Call setProviderRegistrar() before bootstrapPlatform().");
-        // Still store config in registry even without providers
-        PlatformRegistry.instance().setConfig(config);
     }
 
     _bootstrapped = true;
