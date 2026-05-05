@@ -67,11 +67,28 @@ const HttpAccessSchema = z.object({
         type: z.string().min(1),
         secret: z.string().min(1),
     }).optional(),
+    ssl: z.boolean().optional(),
+    method: z.enum(["GET", "POST", "PUT", "DELETE"]).optional(),
+    path: z.string().optional(),
+    usesParams: z.array(z.string()).optional(),
+    transformFile: z.string().optional(),
+    headers: z.record(z.string()).optional(),
 });
 
 const LambdaAccessSchema = z.object({
     functionName: z.string().min(1),
     invocationType: z.enum(["RequestResponse", "Event"]).optional(),
+});
+
+// Shared input schema definition (used by Tool and Workflow)
+const InputSchemaDefSchema = z.object({
+    properties: z.record(z.object({
+        type: z.string().default("string"),
+        description: z.string().optional(),
+        default: z.unknown().optional(),
+        enum: z.array(z.string()).optional(),
+    })).optional(),
+    required: z.array(z.string()).optional(),
 });
 
 export const RemoteToolSchema = z.object({
@@ -89,18 +106,9 @@ export const RemoteToolSchema = z.object({
         http: HttpAccessSchema.optional(),
         lambda: LambdaAccessSchema.optional(),
         secrets: z.array(z.string()).optional(),
+        // For direct-invoke tools: JSON Schema for LLM tool calls
+        inputSchema: InputSchemaDefSchema.optional(),
     }),
-});
-
-// Workflow step schema (business logic lives here)
-const InputSchemaDefSchema = z.object({
-    properties: z.record(z.object({
-        type: z.string().default("string"),
-        description: z.string().optional(),
-        default: z.unknown().optional(),
-        enum: z.array(z.string()).optional(),
-    })).optional(),
-    required: z.array(z.string()).optional(),
 });
 
 export const StepSchema = z.object({
@@ -109,6 +117,7 @@ export const StepSchema = z.object({
     action: z.string().min(1).optional(),
     input: z.record(z.unknown()).optional(),
     outputTransform: z.string().optional(),
+    transformFile: z.string().optional(),
     timeoutMs: z.number().int().positive().optional(),
 });
 

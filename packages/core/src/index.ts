@@ -146,6 +146,10 @@ export type { McpServerFactory } from "./mcp/serverFactory.js";
 // Catalog sub-types needed by declarative tools
 export type { InputSchemaDef, WorkflowStep } from "./catalog/types.js";
 
+// Universal Transformer
+export type { Transformer } from "./catalog/transformer.js";
+export { loadTransformer, applyTransform } from "./catalog/transformer.js";
+
 // Auth
 export { getInstallationToken } from "./auth/githubApp.js";
 

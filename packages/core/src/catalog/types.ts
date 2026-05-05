@@ -10,9 +10,20 @@ export interface ToolDef {
     category: string;
     // Access config (how to reach the capability — NO business logic)
     awsSdk?: { service: string };
-    http?: { baseUrl: string; auth?: { type: string; secret: string } };
+    http?: {
+        baseUrl: string;
+        auth?: { type: string; secret: string };
+        ssl?: boolean;
+        // Direct invocation fields (all optional — backward compatible)
+        method?: "GET" | "POST" | "PUT" | "DELETE";
+        path?: string;
+        usesParams?: string[];
+        transformFile?: string;
+        headers?: Record<string, string>;
+    };
     lambda?: { functionName: string; invocationType?: "RequestResponse" | "Event" };
     secrets?: string[];
+    inputSchema?: InputSchemaDef;
 }
 
 export interface InputSchemaDef {
@@ -31,6 +42,7 @@ export interface WorkflowStep {
     action?: string;
     input?: Record<string, unknown>;
     outputTransform?: string;
+    transformFile?: string;
     timeoutMs?: number;
 }
 
