@@ -7,7 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-05-05
+
 ### Added
+
+#### Universal Transformer (`@agentrun-ai/core`)
+- `Transformer` type — `(data: unknown) => unknown | Promise<unknown>`, sync or async, applicable anywhere data needs to be transformed
+- `loadTransformer(file, baseDir?)` — loads a JS file via dynamic `import()` and returns its default export as a `Transformer`; supports absolute and relative paths
+- `applyTransform(transformer, data)` — applies a Transformer, handling both sync and async cases
+- All three exported from `@agentrun-ai/core`
+
+#### Extended HTTP Tool Spec (`@agentrun-ai/core`)
+- `http` tool YAML now supports direct invocation fields: `method`, `path`, `usesParams`, `headers`, `ssl`, `transformFile`, `inputSchema`
+- All new fields are optional — fully backward compatible with existing `http` tools that only use `baseUrl` + `auth`
+- `transformFile` references a co-located JS file (default export `Transformer`) — eliminates the need for a central transform registry
+- `inputSchema` on `ToolDef` allows direct-invoke HTTP tools to declare their own input shape
+
+#### Extended Workflow Step Spec (`@agentrun-ai/core`)
+- `transformFile?: string` added to `WorkflowStep` as a file-reference alternative to JMESPath `outputTransform`
+
+#### Documentation
+- Book sections 4.5.4 (updated), 4.5.5 (new — Direct HTTP Tool Invocation), 5.10.2, and glossary updated
+
+## [0.5.0] - 2026-04-30
+
+### Added
+
+#### Custom Spec Fields (`@agentrun-ai/core`)
+- `getSpecField(config, key)` — reads arbitrary `spec.*` fields from platform config, bypassing the Zod schema strip
+- Allows pack configs to carry custom fields without core schema changes
 
 #### Eval Execution Runner (`@agentrun-ai/cli`)
 - `ExecutionContext` interface for pluggable agent execution in eval runner
