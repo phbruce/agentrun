@@ -28,6 +28,9 @@ jobs:
 
       - run: pnpm turbo build
 
+      - name: Pre-publish CI step
+        run: ./scripts/check-leaks.sh
+
       - name: Publish packages with provenance
         run: pnpm -r publish --access public --no-git-checks --provenance
         env:

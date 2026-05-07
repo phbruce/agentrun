@@ -79,9 +79,11 @@ async function executeStep(
             const path = pathParts.join(" ").trim();
             const url = path ? `${tool.http.baseUrl}${path}` : tool.http.baseUrl;
 
-            // Resolve auth header from secrets
+            // Resolve auth header from secrets (legacy global fallback — newer
+            // executors use per-user tokens; auth.secret is optional and the
+            // wiring here still supports it for backward-compatible AWS tools).
             const headers: Record<string, string> = {};
-            if (tool.http.auth) {
+            if (tool.http.auth && tool.http.auth.secret) {
                 const secret = context.secrets.get(tool.http.auth.secret);
                 if (secret) {
                     if (tool.http.auth.type === "bearer") {

@@ -1,6 +1,6 @@
 {
   "name": "@agentrun-ai/core",
-  "version": "0.5.2",
+  "version": "0.5.4",
   "description": "Core runtime: orchestrator, RBAC, catalog, channels, platform abstraction",
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -18,7 +18,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "clean": "rm -rf dist *.tsbuildinfo"
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "prepublishOnly": "tsc && ../../scripts/check-leaks.sh $(pwd)/src $(pwd)/dist $(pwd)/package.json"
   },
   "dependencies": {
     "zod": "^3.23.0",

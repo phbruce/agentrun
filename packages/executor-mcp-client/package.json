@@ -1,7 +1,7 @@
 {
   "name": "@agentrun-ai/executor-mcp-client",
-  "version": "0.1.0",
-  "description": "MCP-client executor — delegates tool calls to an upstream MCP server",
+  "version": "0.1.2",
+  "description": "MCP-client executor \u2014 delegates tool calls to an upstream MCP server",
   "license": "AGPL-3.0-only",
   "type": "module",
   "main": "dist/index.js",
@@ -15,18 +15,30 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'no tests'",
-    "clean": "rm -rf dist *.tsbuildinfo"
+    "test": "jest",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "prepublishOnly": "tsc && ../../scripts/check-leaks.sh $(pwd)/src $(pwd)/dist $(pwd)/package.json"
   },
   "peerDependencies": {
-    "@agentrun-ai/core": "workspace:*"
+    "@agentrun-ai/core": "^0.5.4"
   },
   "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^29.5.14",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
     "typescript": "^5.7.0"
   },
-  "files": ["dist", "LICENSE"],
-  "engines": { "node": ">=20.0.0" },
-  "publishConfig": { "access": "public" },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/phbruce/agentrun.git",

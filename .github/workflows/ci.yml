@@ -31,3 +31,6 @@ jobs:
       - run: pnpm turbo typecheck
 
       - run: pnpm turbo build
+
+      - name: CI step (artifact verification)
+        run: ./scripts/check-leaks.sh
