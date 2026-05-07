@@ -50,13 +50,13 @@ describe("PlatformConfigSchema with passthrough()", () => {
 
     it("preserves unknown spec.* keys after parsing", async () => {
         withInline({
-            teams: [{ name: "example-team", members: ["paulo@x.com"] }],
+            teams: [{ name: "team-alpha", members: ["paulo@x.com"] }],
             packs: ["alpha", "beta"],
         });
         const config = await loadPlatformConfig();
         expect(config).not.toBeNull();
         const spec = config!.spec as unknown as Record<string, unknown>;
-        expect(spec.teams).toEqual([{ name: "example-team", members: ["paulo@x.com"] }]);
+        expect(spec.teams).toEqual([{ name: "team-alpha", members: ["paulo@x.com"] }]);
         expect(spec.packs).toEqual(["alpha", "beta"]);
     });
 
@@ -73,7 +73,7 @@ describe("getSpecField", () => {
     beforeEach(async () => {
         delete process.env.AGENTRUN_CONFIG_INLINE;
         withInline({
-            teams: [{ name: "example-team", members: ["paulo@x.com"] }],
+            teams: [{ name: "team-alpha", members: ["paulo@x.com"] }],
             customNumber: 42,
         });
         const config = await loadPlatformConfig();
@@ -89,7 +89,7 @@ describe("getSpecField", () => {
             z.object({ name: z.string(), members: z.array(z.string()) }),
         );
         const teams = getSpecField("teams", TeamsSchema);
-        expect(teams).toEqual([{ name: "example-team", members: ["paulo@x.com"] }]);
+        expect(teams).toEqual([{ name: "team-alpha", members: ["paulo@x.com"] }]);
     });
 
     it("returns undefined when the field is absent", () => {

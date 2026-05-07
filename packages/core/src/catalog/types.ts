@@ -22,9 +22,9 @@ export interface ToolDef {
     awsSdk?: { service: string };
     http?: {
         baseUrl: string;
-        // ADR-0005: per-user tokens only; auth.secret is rejected by the
-        // manifest validator. The auth.type field tells the executor what
-        // wire format to use with the user's token.
+        // Per-user tokens only; auth.secret is rejected by the manifest
+        // validator. The auth.type field tells the executor what wire
+        // format to use with the user's token.
         auth?: { type: string; secret?: string };
         ssl?: boolean;
         // Direct invocation fields (all optional — backward compatible)

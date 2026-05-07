@@ -128,8 +128,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### TODO
 - [ ] Integration tests with real LLMs (Gemini, GPT, Ollama)
-- [ ] Feature flag for REDACTED gateway integration (pending repo access)
-- [ ] `createREDACTEDCaller()` for REDACTED/REDACTED compatibility
 - [ ] Dependency vulnerability updates (fast-xml-parser@5.3.8+, @tootallnate/once@2.0.1+)
 - [ ] Test coverage badges in README (CI/CD pipeline setup)
 - [ ] Migration guide (0.3.2 → 0.4.0)

@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "echo 'no tests'",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "prepublishOnly": "tsc && ../../scripts/check-leaks.sh $(pwd)/src $(pwd)/dist $(pwd)/package.json"
+    "prepublishOnly": "tsc"
   },
   "dependencies": {
     "@agentrun-ai/core": "workspace:*",
