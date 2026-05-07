@@ -6,7 +6,11 @@
 export { logger } from "./logger.js";
 
 // Errors
-export { AgentRunError, NotFoundError, BadRequestError, ForbiddenError, UnauthorizedError } from "./errors.js";
+export { AgentRunError, NotFoundError, BadRequestError, ForbiddenError, UnauthorizedError, MissingUserTokenError } from "./errors.js";
+
+// Executor primitives
+export type { Executor, ExecutionContext, ToolResult, SecretResolver } from "./executor/types.js";
+export { ExecutorRegistry } from "./executor/registry.js";
 
 // Platform types
 export type {
@@ -147,8 +151,8 @@ export type { McpServerFactory } from "./mcp/serverFactory.js";
 export type { InputSchemaDef, WorkflowStep } from "./catalog/types.js";
 
 // Universal Transformer
-export type { Transformer } from "./catalog/transformer.js";
-export { loadTransformer, applyTransform } from "./catalog/transformer.js";
+export type { Transformer, SpawnTransformOptions } from "./catalog/transformer.js";
+export { loadTransformer, applyTransform, spawnTransform } from "./catalog/transformer.js";
 
 // Auth
 export { getInstallationToken } from "./auth/githubApp.js";

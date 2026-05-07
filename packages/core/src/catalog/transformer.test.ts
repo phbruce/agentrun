@@ -4,7 +4,7 @@ import { describe, it, expect } from "@jest/globals";
 import { writeFileSync, mkdtempSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { loadTransformer, applyTransform } from "./transformer.js";
+import { loadTransformer, applyTransform, spawnTransform } from "./transformer.js";
 
 // ---------------------------------------------------------------------------
 // loadTransformer
@@ -52,6 +52,74 @@ describe("loadTransformer", () => {
             /must export a default function/,
         );
     });
+});
+
+// ---------------------------------------------------------------------------
+// applyTransform
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// spawnTransform
+// ---------------------------------------------------------------------------
+
+describe("spawnTransform", () => {
+    it("executes a Python script, passes args via stdin, returns parsed JSON", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "agentrun-spawn-"));
+        const file = join(dir, "echo.py");
+        writeFileSync(file, [
+            "import json, sys",
+            "args = json.load(sys.stdin)",
+            'json.dump({"received": args}, sys.stdout)',
+        ].join("\n"));
+
+        const result = await spawnTransform("python3", file, { key: "value" });
+        expect(result).toEqual({ received: { key: "value" } });
+    });
+
+    it("executes a shell script that reads stdin and writes JSON to stdout", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "agentrun-spawn-"));
+        const file = join(dir, "wrap.sh");
+        writeFileSync(file, '#!/bin/sh\nread input\necho "{\\"input\\":$input}"');
+
+        const result = await spawnTransform("bash", file, 42);
+        expect(result).toEqual({ input: 42 });
+    });
+
+    it("rejects immediately when file is a relative path", async () => {
+        await expect(spawnTransform("python3", "relative/path.py", {})).rejects.toThrow(
+            /must be an absolute path/,
+        );
+    });
+
+    it("rejects when the script exits with non-zero code", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "agentrun-spawn-"));
+        const file = join(dir, "fail.py");
+        writeFileSync(file, "import sys\nsys.stderr.write('boom')\nsys.exit(1)");
+
+        await expect(spawnTransform("python3", file, {})).rejects.toThrow(
+            /exit 1.*boom/s,
+        );
+    });
+
+    it("rejects when the script output is not valid JSON", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "agentrun-spawn-"));
+        const file = join(dir, "bad-json.py");
+        writeFileSync(file, "import sys\nsys.stdout.write('not json')");
+
+        await expect(spawnTransform("python3", file, {})).rejects.toThrow(
+            /not valid JSON/,
+        );
+    });
+
+    it("rejects with timeout error when script hangs", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "agentrun-spawn-"));
+        const file = join(dir, "hang.py");
+        writeFileSync(file, "import time\ntime.sleep(60)");
+
+        await expect(
+            spawnTransform("python3", file, {}, { timeoutMs: 200 }),
+        ).rejects.toThrow(/timed out after 200ms/);
+    }, 3000);
 });
 
 // ---------------------------------------------------------------------------
