@@ -57,6 +57,26 @@ export type {
 
 // Platform registry
 export { PlatformRegistry } from "./platform/registry.js";
+export type { PlatformProviders } from "./platform/registry.js";
+
+// Unified Platform interface
+export { DefaultPlatform, createPlatform } from "./platform/Platform.js";
+export type { Platform, AgentrunPlugin } from "./platform/Platform.js";
+
+// Hook registry
+export { DefaultHookRegistry } from "./hooks/registry.js";
+export type {
+    Hook,
+    HookPhase,
+    HookRegistry,
+    PreToolUseHook,
+    PostToolUseHook,
+    BootHook,
+    PreToolUseContext,
+    PreToolUseResult,
+    PostToolUseContext,
+    BootContext,
+} from "./hooks/types.js";
 
 // Platform config
 export { loadPlatformConfig, buildDefaultConfig, getSpecField } from "./platform/config.js";
@@ -141,11 +161,20 @@ export type { ResolvedSecrets } from "./secret/types.js";
 
 // MCP registry
 export type { ToolHandler } from "./mcp/registry.js";
-export { registerToolFactory, getToolRegistry, registerPackToolFactory, getPackToolFactories } from "./mcp/registry.js";
+export {
+    registerToolFactory,
+    getToolRegistry,
+    registerPackToolFactory,
+    getPackToolFactories,
+    getToolRegistryWithPacks,
+} from "./mcp/registry.js";
 
 // MCP server factory
-export { setMcpServerFactory, createMcpServer } from "./mcp/serverFactory.js";
-export type { McpServerFactory } from "./mcp/serverFactory.js";
+export { setMcpServerFactory, createMcpServer, isJsonRpcHandler, isSdkMcpServer } from "./mcp/serverFactory.js";
+export type { McpServerFactory, McpServerInstance, SdkMcpServer } from "./mcp/serverFactory.js";
+
+// JSON-RPC transport types (shared by core and channel-mcp)
+export type { JsonRpcRequest, JsonRpcResponse, JsonRpcErrorObject, JsonRpcHandler } from "./mcp/jsonRpc.js";
 
 // Catalog sub-types needed by declarative tools
 export type { InputSchemaDef, WorkflowStep } from "./catalog/types.js";

@@ -1,25 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { logger, getToolRegistry } from "@agentrun-ai/core";
-import type { ToolHandler } from "@agentrun-ai/core";
+import type { ToolHandler, JsonRpcRequest, JsonRpcResponse, JsonRpcHandler } from "@agentrun-ai/core";
 
-// ---------------------------------------------------------------------------
-// JSON-RPC types
-// ---------------------------------------------------------------------------
-
-export interface JsonRpcRequest {
-    jsonrpc: "2.0";
-    id?: string | number;
-    method: string;
-    params?: Record<string, unknown>;
-}
-
-export interface JsonRpcResponse {
-    jsonrpc: "2.0";
-    id?: string | number;
-    result?: unknown;
-    error?: { code: number; message: string; data?: unknown };
-}
+// Re-export the JSON-RPC types so existing consumers of @agentrun-ai/channel-mcp
+// keep working — the canonical definitions now live in core, but the names
+// have been part of this package's public API since the first release.
+export type { JsonRpcRequest, JsonRpcResponse } from "@agentrun-ai/core";
 
 // ---------------------------------------------------------------------------
 // MCP Server Options
@@ -49,7 +36,7 @@ export interface McpServerOptions {
  * This is a stateless request/response handler -- transport is handled
  * by the caller (HTTP, Lambda, stdio, etc.).
  */
-export class McpServer {
+export class McpServer implements JsonRpcHandler {
     private readonly name: string;
     private readonly version: string;
     private readonly toolsOverride?: Map<string, ToolHandler>;

@@ -3,7 +3,9 @@ import { logger } from "../logger.js";
 import { buildSystemPrompt } from "./systemPrompt.js";
 import { createPreToolUseHook } from "../hooks/preToolUse.js";
 import { createPostToolUseHook } from "../hooks/postToolUse.js";
-import { createMcpServer } from "../mcp/serverFactory.js";
+import { createMcpServer, isSdkMcpServer } from "../mcp/serverFactory.js";
+import type { SdkMcpServer } from "../mcp/serverFactory.js";
+import type { AwsClients } from "../mcp/clientFactory.js";
 import { getRoleForUser, getAllowedToolsForRole, getRoleConfig } from "../rbac/permissions.js";
 import type { SkillDef } from "../catalog/types.js";
 import { resolveSkillMcpTools } from "../catalog/catalog.js";
@@ -13,6 +15,38 @@ import { createClientsForIdentity } from "../mcp/clientFactory.js";
 import type { ResolvedIdentity } from "../identity/types.js";
 import type { IdentitySource } from "../rbac/types.js";
 import { getModels } from "../platform/models.js";
+
+/**
+ * Bridge to the Claude Agent SDK transport. The agent runner only runs
+ * with SDK-style servers; JSON-RPC handlers are used by HTTP transports
+ * (channel-mcp). We narrow at the boundary and surface a clear error if
+ * the registered factory returned the wrong shape.
+ *
+ * NOTE: the call sites that consume the return value pass it as
+ *   `mcpServers: { "<name>": { type: "sdk", name, instance: <server> as any } }`
+ *
+ * The Claude SDK declares `instance` as its own opaque `McpServer` type
+ * (`@anthropic-ai/claude-agent-sdk` ⇢ `coreTypes.McpSdkServerConfig`),
+ * which is intentionally not exported as a structural shape. Our
+ * `SdkMcpServer` is structural (just `connect(transport)`), so the cast
+ * to `any` is the deliberate boundary between agentrun's structural
+ * type and the SDK's nominal type. Tightening this would require
+ * either (a) re-exporting the SDK's `McpServer` from this package
+ * (peer-dependency surface), or (b) adopting the SDK's type as the
+ * canonical shape for `SdkMcpServer`. Both decisions are bigger than
+ * the current typing scope and are tracked as a follow-up.
+ */
+function createSdkMcpServerOrThrow(awsClients?: AwsClients): SdkMcpServer {
+    const server = createMcpServer(awsClients);
+    if (!isSdkMcpServer(server)) {
+        throw new Error(
+            "agentRunner expected an SDK-style MCP server (with connect()), " +
+            "but the registered factory returned a JSON-RPC handler. " +
+            "Use channel-mcp's HTTP server for JSON-RPC handlers; agent runs need SDK servers.",
+        );
+    }
+    return server;
+}
 
 // Lazy import — claude-agent-sdk is only available in Lambda runtime, not in CLI
 async function getQuery(): Promise<typeof import("@anthropic-ai/claude-agent-sdk")["query"]> {
@@ -83,7 +117,7 @@ export async function processInfraQuery(userQuery: string, userId: string, sourc
                 maxBudgetUsd: config.maxBudgetUsd,
                 permissionMode: "bypassPermissions",
                 allowDangerouslySkipPermissions: true,
-                mcpServers: { "infra-tools": createMcpServer(awsClients) },
+                mcpServers: { "infra-tools": { type: "sdk" as const, name: "infra-tools", instance: createSdkMcpServerOrThrow(awsClients) as any } },
                 allowedTools,
                 hooks: {
                     PreToolUse: [{ hooks: [preToolUseHook] }],
@@ -166,7 +200,7 @@ export async function processSkill(skill: SkillDef, args: string, userId: string
                 maxBudgetUsd: skill.maxBudgetUsd,
                 permissionMode: "bypassPermissions",
                 allowDangerouslySkipPermissions: true,
-                mcpServers: { "infra-tools": createMcpServer(awsClients) },
+                mcpServers: { "infra-tools": { type: "sdk" as const, name: "infra-tools", instance: createSdkMcpServerOrThrow(awsClients) as any } },
                 allowedTools,
                 hooks: {
                     PreToolUse: [{ hooks: [preToolUseHook] }],

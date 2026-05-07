@@ -35,8 +35,13 @@ setMcpServerFactory((awsClients) => {
         }
     } catch { /* catalog not loaded yet */ }
 
-    return createSdkMcpServer({
+    // The SDK's createSdkMcpServer returns a wrapped config
+    // ({ type: "sdk", name, instance }). McpServerFactory now expects
+    // the raw server (with connect()), which the agent runner re-wraps
+    // before handing to the SDK. Unwrap once here.
+    const sdkConfig = createSdkMcpServer({
         name: "infra-tools",
         tools: baseTools,
     });
+    return (sdkConfig as { instance: { connect(transport: unknown): Promise<void> } }).instance;
 });
