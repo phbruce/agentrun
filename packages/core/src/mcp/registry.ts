@@ -54,3 +54,44 @@ export function registerPackToolFactory(
 export function getPackToolFactories(packName: string): Record<string, (secrets: ResolvedSecrets) => ToolHandler> {
     return _packToolFactories.get(packName) ?? {};
 }
+
+/**
+ * Build a tool registry merged from:
+ *  - Global tool factories registered via `registerToolFactory`
+ *  - Pack-scoped tool factories registered via `registerPackToolFactory`
+ *    for each pack in `packNames`
+ *
+ * Pack-scoped tools take precedence over globals when names collide
+ * (the pack is more specific than the runtime). Within a single pass,
+ * the iteration order of `packNames` determines which pack wins on
+ * cross-pack collisions; callers should provide a stable order.
+ *
+ * `secrets` is a fully-resolved Map<string, string> the caller obtained
+ * from a SecretResolver before invoking this function. Each pack
+ * factory is given the same map; pack factories are responsible for
+ * reading only the keys they need.
+ */
+export function getToolRegistryWithPacks(
+    packNames: readonly string[],
+    secrets: ResolvedSecrets,
+    awsClients?: AwsClients,
+): Map<string, ToolHandler> {
+    const merged = getToolRegistry(awsClients);
+    for (const packName of packNames) {
+        const factories = _packToolFactories.get(packName);
+        if (!factories) continue;
+        for (const [toolName, factory] of Object.entries(factories)) {
+            merged.set(toolName, factory(secrets));
+        }
+    }
+    return merged;
+}
+
+/**
+ * Reset internal registries. Tests call this to keep state hermetic.
+ * Not exported from index.ts; consumers shouldn't need it in production.
+ */
+export function _resetToolRegistries(): void {
+    _factories.length = 0;
+    _packToolFactories.clear();
+}
