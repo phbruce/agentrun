@@ -18,7 +18,13 @@ let _registrar: ProviderRegistrar | null = null;
  * Set the provider registrar function.
  * Must be called before bootstrapPlatform().
  *
- * Example:
+ * @deprecated Use the Platform plugin contract instead — pass a
+ *   plugin function `(platform: Platform) => void` that calls
+ *   `platform.registerProviders(...)`. The legacy registrar singleton
+ *   only supports a single cloud at a time and will be removed in a
+ *   future major release.
+ *
+ * Example (legacy):
  *   import { registerAwsProviders } from "@agentrun-ai/aws";
  *   setProviderRegistrar(registerAwsProviders);
  */
