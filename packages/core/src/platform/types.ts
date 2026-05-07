@@ -13,8 +13,10 @@ export interface LlmResponse {
 }
 
 export interface ContentBlock {
-    type: "text" | "image";
+    type: "text" | "image" | "json";
     text?: string;
+    /** Structured payload — e.g. a tool result that an LLM should not paraphrase. */
+    data?: unknown;
     source?: {
         type: "base64";
         media_type: string;

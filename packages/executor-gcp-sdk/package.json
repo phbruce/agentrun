@@ -1,0 +1,39 @@
+{
+  "name": "@agentrun-ai/executor-gcp-sdk",
+  "version": "0.1.0",
+  "description": "GCP SDK executor — discoveryengine, bigquery and other operations dispatched by manifest",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no tests'",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "peerDependencies": {
+    "@agentrun-ai/core": "workspace:*"
+  },
+  "dependencies": {
+    "google-auth-library": "^9.14.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  },
+  "files": ["dist", "LICENSE"],
+  "engines": { "node": ">=20.0.0" },
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phbruce/agentrun.git",
+    "directory": "packages/executor-gcp-sdk"
+  },
+  "homepage": "https://github.com/phbruce/agentrun"
+}

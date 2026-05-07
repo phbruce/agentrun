@@ -1,0 +1,36 @@
+{
+  "name": "@agentrun-ai/executor-mcp-client",
+  "version": "0.1.0",
+  "description": "MCP-client executor — delegates tool calls to an upstream MCP server",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no tests'",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "peerDependencies": {
+    "@agentrun-ai/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  },
+  "files": ["dist", "LICENSE"],
+  "engines": { "node": ">=20.0.0" },
+  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phbruce/agentrun.git",
+    "directory": "packages/executor-mcp-client"
+  },
+  "homepage": "https://github.com/phbruce/agentrun"
+}

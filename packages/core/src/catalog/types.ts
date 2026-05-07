@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-export type ToolType = "mcp-server" | "skill" | "api-rest" | "aws-sdk" | "http" | "lambda";
+
+/**
+ * Tool dispatch type. New executors can introduce additional values; the
+ * `ExecutorRegistry` resolves the right executor at dispatch time, so adding
+ * a type does not require changes to the orchestrator or the catalog loader.
+ *
+ * The historic union ("mcp-server"|"skill"|"api-rest"|"aws-sdk"|"http"|"lambda")
+ * is preserved for backward compatibility; new packages add "cli", "gcp-sdk",
+ * "grpc", etc.
+ */
+export type ToolType = string;
 
 export interface ToolDef {
     name: string;
@@ -12,7 +22,10 @@ export interface ToolDef {
     awsSdk?: { service: string };
     http?: {
         baseUrl: string;
-        auth?: { type: string; secret: string };
+        // ADR-0005: per-user tokens only; auth.secret is rejected by the
+        // manifest validator. The auth.type field tells the executor what
+        // wire format to use with the user's token.
+        auth?: { type: string; secret?: string };
         ssl?: boolean;
         // Direct invocation fields (all optional — backward compatible)
         method?: "GET" | "POST" | "PUT" | "DELETE";
@@ -20,6 +33,20 @@ export interface ToolDef {
         usesParams?: string[];
         transformFile?: string;
         headers?: Record<string, string>;
+    };
+    cli?: {
+        impl: string;
+        interpreter?: "node" | "python3" | "bash";
+        timeoutMs?: number;
+    };
+    gcpSdk?: {
+        operation: string;
+        dataStore?: string;
+        [key: string]: unknown;
+    };
+    mcpServer?: {
+        server: string;
+        tool: string;
     };
     lambda?: { functionName: string; invocationType?: "RequestResponse" | "Event" };
     secrets?: string[];

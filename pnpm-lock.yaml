@@ -230,6 +230,49 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/executor-cli:
+    dependencies:
+      '@agentrun-ai/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/executor-gcp-sdk:
+    dependencies:
+      '@agentrun-ai/core':
+        specifier: workspace:*
+        version: link:../core
+      google-auth-library:
+        specifier: ^9.14.0
+        version: 9.15.1
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/executor-http:
+    dependencies:
+      '@agentrun-ai/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
+  packages/executor-mcp-client:
+    dependencies:
+      '@agentrun-ai/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/gcp:
     dependencies:
       '@agentrun-ai/core':
