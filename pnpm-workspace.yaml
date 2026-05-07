@@ -1,3 +1,4 @@
 packages:
   - "packages/*"
   - "examples/gchat-standalone"
+  - "examples/executor-pattern-demo"

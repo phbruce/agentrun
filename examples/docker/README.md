@@ -154,3 +154,11 @@ docker-compose.yml      # Full stack (app + postgres + redis)
 package.json
 tsconfig.json
 ```
+
+## Related: executor pattern demo
+
+For a focused walk-through of the protocol-agnostic Executor Registry,
+see the `examples/executor-pattern-demo/` example. It is a small
+script with no Docker dependency that wires a `cli`-type executor
+through a `Platform` and dispatches a tool — the same flow used by
+all other example apps.

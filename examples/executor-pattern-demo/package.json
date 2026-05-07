@@ -1,0 +1,21 @@
+{
+  "name": "agentrun-example-executor-pattern-demo",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "description": "Minimal walk-through of the protocol-agnostic Executor Registry — register an executor by type, dispatch a tool through Platform.",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no tests'"
+  },
+  "dependencies": {
+    "@agentrun-ai/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}
