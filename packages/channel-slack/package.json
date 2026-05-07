@@ -1,6 +1,6 @@
 {
   "name": "@agentrun-ai/channel-slack",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Slack channel adapter: events handler, Block Kit formatting, identity resolution",
   "license": "AGPL-3.0-only",
   "type": "module",
