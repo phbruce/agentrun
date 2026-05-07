@@ -4,3 +4,12 @@
 
 export { McpServer, createMcpServer } from "./server.js";
 export type { McpServerOptions, JsonRpcRequest, JsonRpcResponse } from "./server.js";
+
+// SSE streaming transport
+export { SseEventStream } from "./sse.js";
+export type {
+    JsonRpcNotification,
+    McpStreamMessage,
+    ByteSink,
+    SseEventStreamOptions,
+} from "./sse.js";

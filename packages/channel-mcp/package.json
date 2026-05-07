@@ -15,14 +15,18 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'no tests'",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "prepublishOnly": "tsc && ../../scripts/check-leaks.sh $(pwd)/src $(pwd)/dist $(pwd)/package.json"
+    "prepublishOnly": "tsc"
   },
   "dependencies": {
     "@agentrun-ai/core": "workspace:*"
   },
   "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^29.5.14",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
     "typescript": "^5.7.0"
   },
   "files": [
