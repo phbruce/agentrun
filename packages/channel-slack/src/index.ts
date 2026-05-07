@@ -34,3 +34,26 @@ export { markdownToRichTextBlocks } from "./richTextSerializer.js";
 export { renderGreeting, renderResponse, renderError } from "./templateRenderer.js";
 export type { RenderContext } from "./templateRenderer.js";
 
+// Slack event types
+export {
+    isUrlVerification,
+    isEventCallback,
+} from "./events.js";
+export type {
+    SlackEvent,
+    SlackEventEnvelope,
+    SlackMessageEvent,
+    SlackAppMentionEvent,
+    SlackAppHomeOpenedEvent,
+    SlackUnknownEvent,
+    SlackUrlVerification,
+} from "./events.js";
+
+// Slash command routing
+export { SlashCommandRouter, parseSlashCommandBody } from "./slashCommand.js";
+export type {
+    SlashCommandPayload,
+    SlashCommandResponse,
+    SlashCommandHandler,
+} from "./slashCommand.js";
+
