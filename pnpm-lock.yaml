@@ -522,6 +522,25 @@ importers:
         specifier: ^5.7.0
         version: 5.9.3
 
+  packages/tools-trello:
+    dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.1.0
+        version: 0.1.77(zod@3.25.76)
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      '@agentrun-ai/core':
+        specifier: workspace:*
+        version: link:../core
+      '@jest/globals':
+        specifier: ^29.7.0
+        version: 29.7.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
 packages:
 
   '@agentrun-ai/core@0.5.4':

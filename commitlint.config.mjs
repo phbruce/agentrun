@@ -69,7 +69,7 @@ export default {
                 'tools-aws',
                 'tools-gcp',
                 'tools-github',
-                'tools-jira',
+                'tools-jira', 'tools-trello',
                 'cli',
                 'deps',
                 'release',

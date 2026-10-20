@@ -100,6 +100,7 @@ Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. T
 | [`@agentrun-ai/tools-gcp`](packages/tools-gcp) | GCP infrastructure tools (GKE, Cloud SQL, Cloud Functions, Cloud Logging, Pub/Sub) |
 | [`@agentrun-ai/tools-github`](packages/tools-github) | GitHub tools (PRs, commits, reviews) |
 | [`@agentrun-ai/tools-jira`](packages/tools-jira) | Jira tools (issues, comments, transitions) |
+| [`@agentrun-ai/tools-trello`](packages/tools-trello) | Trello tools (boards, lists, cards, comments, checklists) |
 | [`@agentrun-ai/cli`](packages/cli) | CLI: validate manifests, sync packs, ingest docs for RAG |
 
 ### Dependency graph
@@ -116,6 +117,7 @@ Every infrastructure concern is a TypeScript interface in `@agentrun-ai/core`. T
 @agentrun-ai/tools-gcp         @google-cloud/*, @agentrun-ai/core
 @agentrun-ai/tools-github      @octokit/rest, @agentrun-ai/core
 @agentrun-ai/tools-jira        @agentrun-ai/core
+@agentrun-ai/tools-trello      @agentrun-ai/core
 @agentrun-ai/cli               @agentrun-ai/core, commander
 ```
 

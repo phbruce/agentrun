@@ -1,0 +1,51 @@
+{
+  "name": "@agentrun-ai/tools-trello",
+  "version": "0.1.0",
+  "description": "Trello tools: boards, lists, cards, search, comments and checklists via API key + token",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "prepublishOnly": "tsc",
+    "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage"
+  },
+  "peerDependencies": {
+    "@agentrun-ai/core": ">=0.4.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@agentrun-ai/core": "workspace:*",
+    "@jest/globals": "^29.7.0",
+    "typescript": "^5.7.0"
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phbruce/agentrun.git",
+    "directory": "packages/tools-trello"
+  },
+  "homepage": "https://github.com/phbruce/agentrun"
+}
