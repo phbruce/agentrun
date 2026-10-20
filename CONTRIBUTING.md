@@ -35,6 +35,7 @@ agentrun/
 │   ├── tools-gcp/      # @agentrun-ai/tools-gcp — GCP infrastructure tools
 │   ├── tools-github/   # @agentrun-ai/tools-github — GitHub tools
 │   ├── tools-jira/     # @agentrun-ai/tools-jira — Jira tools
+│   ├── tools-trello/   # @agentrun-ai/tools-trello — Trello tools
 │   └── cli/            # @agentrun-ai/cli — CLI (validate, sync, ingest)
 ├── examples/           # Deployment examples (Lambda, GCP, Docker, standalone)
 └── docs/               # Documentation
@@ -87,7 +88,7 @@ type(scope): subject
 
 Use the package name without the `@agentrun-ai/` prefix:
 
-`core`, `aws`, `gcp`, `channel-slack`, `channel-gchat`, `channel-mcp`, `tools-aws`, `tools-gcp`, `tools-github`, `tools-jira`, `cli`, `deps`, `release`
+`core`, `aws`, `gcp`, `channel-slack`, `channel-gchat`, `channel-mcp`, `tools-aws`, `tools-gcp`, `tools-github`, `tools-jira`, `tools-trello`, `cli`, `deps`, `release`
 
 ### Examples
 
