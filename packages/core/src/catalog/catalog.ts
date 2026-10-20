@@ -385,8 +385,18 @@ export async function getMcpToolNamesForScope(
     // Intersect: only use-cases in BOTH the scope AND the role
     const filtered = scopeUseCases.filter(uc => allowedUseCases.includes(uc));
 
+    return Array.from(collectToolNamesForScope(catalog, filtered));
+}
+
+/**
+ * Tool names reachable from the given use-cases: registry tools of their
+ * workflows plus their workflows-with-steps (executable workflows are MCP
+ * tools too). Workflows of use-cases outside the list never leak in, so a
+ * scoped server only exposes its own scope.
+ */
+export function collectToolNamesForScope(catalog: ManifestCatalog, useCaseNames: string[]): Set<string> {
     const toolNames = new Set<string>();
-    for (const ucName of filtered) {
+    for (const ucName of useCaseNames) {
         const uc = catalog.useCases.get(ucName);
         if (!uc) continue;
         for (const wfName of uc.workflows) {
@@ -396,13 +406,10 @@ export async function getMcpToolNamesForScope(
                 const tool = catalog.tools.get(t);
                 if (tool && REGISTRY_TOOL_TYPES.has(tool.type)) toolNames.add(tool.name);
             }
+            if (wf.steps && wf.steps.length > 0) toolNames.add(wf.name);
         }
     }
-
-    // Include workflows-with-steps as callable tools
-    collectWorkflowToolNames(catalog, role, toolNames);
-
-    return Array.from(toolNames);
+    return toolNames;
 }
 
 /** Collect workflow names that have steps (executable workflows → MCP tools). */
