@@ -105,7 +105,8 @@ function fetchLocalPack(packName: string, localDir: string): { pack: PackDef; ca
 // Shared pack content parser (used by both local and remote loaders)
 // ---------------------------------------------------------------------------
 
-function parsePackContents(packName: string, fileContents: Map<string, string>): { pack: PackDef; catalog: ManifestCatalog } {
+/** Exported for tests. */
+export function parsePackContents(packName: string, fileContents: Map<string, string>): { pack: PackDef; catalog: ManifestCatalog } {
     const packYaml = fileContents.get("pack.yaml") ?? fileContents.get("pack.yml");
     let pack: PackDef;
 
@@ -177,6 +178,7 @@ function parsePackContents(packName: string, fileContents: Map<string, string>):
                     keywords: parsed.spec.keywords,
                     workflows: parsed.spec.workflows,
                     template: parsed.spec.template,
+                    ...(parsed.spec.scope ? { scope: parsed.spec.scope } : {}),
                 });
             } else if (dir === "skills" || doc.kind === "Skill") {
                 const parsed = RemoteSkillSchema.parse(doc);
